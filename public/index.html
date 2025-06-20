@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#4f46e5" />
+    <meta name="description" content="A comprehensive expense tracking application with Firebase backend and tax calculations" />
+    <meta name="keywords" content="expense tracker, budget, tax calculator, finance, money management" />
+    <meta name="author" content="Expense Tracker App" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://your-domain.vercel.app/" />
+    <meta property="og:title" content="Expense Tracker - Manage Your Finances" />
+    <meta property="og:description" content="Track expenses, calculate taxes, and manage your budget with our comprehensive financial tool." />
+    <meta property="og:image" content="%PUBLIC_URL%/og-image.png" />
+
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image" />
+    <meta property="twitter:url" content="https://your-domain.vercel.app/" />
+    <meta property="twitter:title" content="Expense Tracker - Manage Your Finances" />
+    <meta property="twitter:description" content="Track expenses, calculate taxes, and manage your budget with our comprehensive financial tool." />
+    <meta property="twitter:image" content="%PUBLIC_URL%/og-image.png" />
+
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+
+    <!-- Preconnect to external domains for better performance -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+    <title>Expense Tracker - Manage Your Finances</title>
+
+    <style>
+        /* Loading screen styles */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.3s ease-out;
+        }
+
+        #loading-screen.fade-out {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .loading-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #e5e7eb;
+            border-top: 4px solid #4f46e5;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 16px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: #6b7280;
+            font-family: 'Inter', sans-serif;
+            font-size: 16px;
+            font-weight: 500;
+        }
+
+        /* Base font family */
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+            'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+            sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+            margin: 0;
+            padding: 0;
+            background-color: #f9fafb;
+        }
+
+        code {
+            font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+            monospace;
+        }
+
+        /* Prevent flash of unstyled content */
+        .app-container {
+            min-height: 100vh;
+            opacity: 0;
+            transition: opacity 0.3s ease-in;
+        }
+
+        .app-container.loaded {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+<noscript>
+    <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif;">
+        <h1>JavaScript Required</h1>
+        <p>You need to enable JavaScript to run this expense tracking application.</p>
+        <p>Please enable JavaScript in your browser settings and reload the page.</p>
+    </div>
+</noscript>
+
+<!-- Loading screen -->
+<div id="loading-screen">
+    <div class="loading-spinner"></div>
+    <div class="loading-text">Loading Expense Tracker...</div>
+</div>
+
+<!-- Main app container -->
+<div id="root" class="app-container"></div>
+
+<!-- Service Worker Registration -->
+<script>
+    // Hide loading screen when app loads
+    window.addEventListener('load', function() {
+        setTimeout(function() {
+            const loadingScreen = document.getElementById('loading-screen');
+            const appContainer = document.querySelector('.app-container');
+
+            if (loadingScreen) {
+                loadingScreen.classList.add('fade-out');
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                }, 300);
+            }
+
+            if (appContainer) {
+                appContainer.classList.add('loaded');
+            }
+        }, 1000); // Minimum loading time
+    });
+
+    // Service Worker for PWA capabilities
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+            navigator.serviceWorker.register('/sw.js')
+                .then(function(registration) {
+                    console.log('SW registered: ', registration);
+                })
+                .catch(function(registrationError) {
+                    console.log('SW registration failed: ', registrationError);
+                });
+        });
+    }
+
+    // Error handling for uncaught errors
+    window.addEventListener('error', function(e) {
+        console.error('Application error:', e.error);
+        // You could send this to an error tracking service
+    });
+
+    // Handle unhandled promise rejections
+    window.addEventListener('unhandledrejection', function(e) {
+        console.error('Unhandled promise rejection:', e.reason);
+        // You could send this to an error tracking service
+    });
+</script>
+</body>
+</html>
