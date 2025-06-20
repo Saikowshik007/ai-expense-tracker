@@ -1,11 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { Calculator, LogOut } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
-import { useUserData } from '../hooks/useUserData';
-import { TaxCalculatorService } from '../services/TaxCalculatorService';
-import AuthForm from '../components/AuthForm';
-import Dashboard from '../components/Dashboard';
-import PaycheckCalculator from '../components/PaycheckCalculator';
+import { useAuth } from './hooks/useAuth';
+import { useUserData } from './hooks/useUserData';
+import { TaxCalculatorService } from './services/TaxCalculatorService';
+import AuthForm from './components/AuthForm';
+import Dashboard from './components/Dashboard';
+import PaycheckCalculator from './components/PaycheckCalculator';
 import ExpenseManager from './components/ExpenseManager';
 import LoadingSpinner from './components/LoadingSpinner';
 
