@@ -80,11 +80,6 @@
   "env": {
     "NODE_ENV": "production"
   },
-  "build": {
-    "env": {
-      "REACT_APP_BUILD_TIME": "@now"
-    }
-  },
   "regions": ["iad1"],
   "github": {
     "autoAlias": false
