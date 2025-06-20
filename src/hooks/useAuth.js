@@ -2,17 +2,20 @@ import { useState, useEffect, useCallback } from 'react';
 import {
     signInWithEmailAndPassword,
     createUserWithEmailAndPassword,
+    signInWithPopup,
+    signInWithRedirect,
+    getRedirectResult,
     signOut,
     onAuthStateChanged,
     sendPasswordResetEmail,
     updateProfile,
     deleteUser
 } from 'firebase/auth';
-import { auth } from '../firebase';
+import { auth, googleProvider } from '../firebase';
 
 /**
  * Custom Hook for Authentication - Interface Segregation Principle
- * Provides all authentication-related functionality
+ * Provides all authentication-related functionality including Google Auth
  */
 export const useAuth = () => {
     const [user, setUser] = useState(null);
@@ -38,6 +41,24 @@ export const useAuth = () => {
         return unsubscribe;
     }, []);
 
+    // Check for redirect result on mount (for mobile Google sign-in)
+    useEffect(() => {
+        const checkRedirectResult = async () => {
+            try {
+                const result = await getRedirectResult(auth);
+                if (result) {
+                    // User signed in via redirect
+                    console.log('Google sign-in redirect successful');
+                }
+            } catch (error) {
+                console.error('Redirect result error:', error);
+                setError(error.message);
+            }
+        };
+
+        checkRedirectResult();
+    }, []);
+
     /**
      * Sign in with email and password
      * @param {string} email - User email
@@ -59,7 +80,63 @@ export const useAuth = () => {
     }, []);
 
     /**
-     * Create new user account
+     * Sign in with Google (popup method)
+     * @returns {Promise<UserCredential>}
+     */
+    const signInWithGoogle = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            // Try popup first (works better on desktop)
+            const result = await signInWithPopup(auth, googleProvider);
+
+            // Optional: Get additional user info
+            // const credential = GoogleAuthProvider.credentialFromResult(result);
+            // const token = credential.accessToken;
+
+            return result;
+        } catch (error) {
+            console.error('Google sign-in error:', error);
+
+            // Handle specific errors
+            if (error.code === 'auth/popup-blocked') {
+                setError('Popup was blocked. Please allow popups for this site or try again.');
+            } else if (error.code === 'auth/popup-closed-by-user') {
+                setError('Sign-in was cancelled. Please try again.');
+            } else if (error.code === 'auth/cancelled-popup-request') {
+                // User cancelled, don't show error
+                setError(null);
+            } else {
+                setError(error.message);
+            }
+
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    /**
+     * Sign in with Google (redirect method - better for mobile)
+     * @returns {Promise<void>}
+     */
+    const signInWithGoogleRedirect = useCallback(async () => {
+        try {
+            setLoading(true);
+            setError(null);
+            await signInWithRedirect(auth, googleProvider);
+            // Note: This will redirect the page, so the component will unmount
+        } catch (error) {
+            console.error('Google redirect sign-in error:', error);
+            setError(error.message);
+            setLoading(false);
+            throw error;
+        }
+    }, []);
+
+    /**
+     * Create new user account with email and password
      * @param {string} email - User email
      * @param {string} password - User password
      * @param {string} displayName - Optional display name
@@ -213,6 +290,22 @@ export const useAuth = () => {
         return user?.emailVerified || false;
     }, [user]);
 
+    /**
+     * Check if user signed in with Google
+     * @returns {boolean}
+     */
+    const isGoogleUser = useCallback(() => {
+        return user?.providerData?.some(provider => provider.providerId === 'google.com') || false;
+    }, [user]);
+
+    /**
+     * Get user photo URL
+     * @returns {string|null}
+     */
+    const getUserPhotoURL = useCallback(() => {
+        return user?.photoURL || null;
+    }, [user]);
+
     return {
         // State
         user,
@@ -221,6 +314,8 @@ export const useAuth = () => {
 
         // Actions
         signIn,
+        signInWithGoogle,
+        signInWithGoogleRedirect,
         signUp,
         signOutUser,
         resetPassword,
@@ -233,6 +328,8 @@ export const useAuth = () => {
         userDisplayName: getUserDisplayName(),
         userId: getUserId(),
         userEmail: getUserEmail(),
-        isEmailVerified: isEmailVerified()
+        isEmailVerified: isEmailVerified(),
+        isGoogleUser: isGoogleUser(),
+        userPhotoURL: getUserPhotoURL()
     };
 };
