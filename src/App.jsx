@@ -7,9 +7,9 @@ import AuthForm from './components/AuthForm';
 import Dashboard from './components/Dashboard';
 import PaycheckCalculator from './components/PaycheckCalculator';
 import ExpenseManager from './components/ExpenseManager';
-import LoadingSpinner from './components/LoadingSpinner';
+import { LoadingSpinner } from './components/UI';
 
-const ExpenseTracker = () => {
+const App = () => {
     const { user, loading: authLoading, signOutUser } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
 
@@ -43,7 +43,11 @@ const ExpenseTracker = () => {
     };
 
     if (authLoading) {
-        return <LoadingSpinner />;
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <LoadingSpinner text="Loading Expense Tracker..." />
+            </div>
+        );
     }
 
     if (!user) {
@@ -104,7 +108,9 @@ const ExpenseTracker = () => {
             {/* Main Content */}
             <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 {dataLoading ? (
-                    <LoadingSpinner />
+                    <div className="flex justify-center">
+                        <LoadingSpinner text="Loading your data..." />
+                    </div>
                 ) : (
                     <>
                         {activeTab === 'dashboard' && (
@@ -135,4 +141,4 @@ const ExpenseTracker = () => {
     );
 };
 
-export default ExpenseTracker;
+export default App;
