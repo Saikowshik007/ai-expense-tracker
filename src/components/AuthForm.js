@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calculator } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { Input, Button, Card, Alert } from './UI';
+import Footer from './Footer';
 
 /**
  * Google Icon Component
@@ -212,152 +213,157 @@ const AuthForm = () => {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <Card className="w-full max-w-md">
-                {/* Header */}
-                <div className="text-center mb-8">
-                    <Calculator className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
-                    <h1 className="text-2xl font-bold text-gray-900">Expense Tracker</h1>
-                    <p className="text-gray-600 mt-2">
-                        {isLogin ? 'Welcome back!' : 'Create your account'}
-                    </p>
-                </div>
-
-                {/* Auth Error Alert */}
-                {authError && (
-                    <Alert type="error" className="mb-6" onClose={clearError}>
-                        {authError}
-                    </Alert>
-                )}
-
-                {/* Google Sign-In Button */}
-                <div className="mb-6">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        fullWidth
-                        onClick={handleGoogleSignIn}
-                        loading={isGoogleLoading}
-                        disabled={isGoogleLoading || isSubmitting}
-                        className="border-gray-300 hover:bg-gray-50 text-gray-700 font-medium"
-                        icon={!isGoogleLoading && <GoogleIcon />}
-                    >
-                        {isLogin ? 'Sign in with Google' : 'Sign up with Google'}
-                    </Button>
-                </div>
-
-                {/* Divider */}
-                <div className="relative mb-6">
-                    <div className="absolute inset-0 flex items-center">
-                        <div className="w-full border-t border-gray-300" />
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex flex-col">
+            <div className="flex-1 flex items-center justify-center p-4">
+                <Card className="w-full max-w-md">
+                    {/* Header */}
+                    <div className="text-center mb-8">
+                        <Calculator className="w-12 h-12 text-indigo-600 mx-auto mb-4" />
+                        <h1 className="text-2xl font-bold text-gray-900">Expense Tracker</h1>
+                        <p className="text-gray-600 mt-2">
+                            {isLogin ? 'Welcome back!' : 'Create your account'}
+                        </p>
                     </div>
-                    <div className="relative flex justify-center text-sm">
-                        <span className="px-2 bg-white text-gray-500">Or continue with email</span>
-                    </div>
-                </div>
 
-                {/* Email/Password Form */}
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Email Input */}
-                    <Input
-                        label="Email Address"
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => handleInputChange('email', e.target.value)}
-                        error={formErrors.email}
-                        placeholder="Enter your email"
-                        required
-                    />
-
-                    {/* Display Name Input (Signup only) */}
-                    {!isLogin && (
-                        <Input
-                            label="Display Name (Optional)"
-                            type="text"
-                            value={formData.displayName}
-                            onChange={(e) => handleInputChange('displayName', e.target.value)}
-                            error={formErrors.displayName}
-                            placeholder="How should we call you?"
-                        />
+                    {/* Auth Error Alert */}
+                    {authError && (
+                        <Alert type="error" className="mb-6" onClose={clearError}>
+                            {authError}
+                        </Alert>
                     )}
 
-                    {/* Password Input */}
-                    <Input
-                        label="Password"
-                        type="password"
-                        value={formData.password}
-                        onChange={(e) => handleInputChange('password', e.target.value)}
-                        error={formErrors.password}
-                        placeholder="Enter your password"
-                        required
-                    />
+                    {/* Google Sign-In Button */}
+                    <div className="mb-6">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            fullWidth
+                            onClick={handleGoogleSignIn}
+                            loading={isGoogleLoading}
+                            disabled={isGoogleLoading || isSubmitting}
+                            className="border-gray-300 hover:bg-gray-50 text-gray-700 font-medium"
+                            icon={!isGoogleLoading && <GoogleIcon />}
+                        >
+                            {isLogin ? 'Sign in with Google' : 'Sign up with Google'}
+                        </Button>
+                    </div>
 
-                    {/* Confirm Password Input (Signup only) */}
-                    {!isLogin && (
+                    {/* Divider */}
+                    <div className="relative mb-6">
+                        <div className="absolute inset-0 flex items-center">
+                            <div className="w-full border-t border-gray-300" />
+                        </div>
+                        <div className="relative flex justify-center text-sm">
+                            <span className="px-2 bg-white text-gray-500">Or continue with email</span>
+                        </div>
+                    </div>
+
+                    {/* Email/Password Form */}
+                    <form onSubmit={handleSubmit} className="space-y-4">
+                        {/* Email Input */}
                         <Input
-                            label="Confirm Password"
-                            type="password"
-                            value={formData.confirmPassword}
-                            onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
-                            error={formErrors.confirmPassword}
-                            placeholder="Confirm your password"
+                            label="Email Address"
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) => handleInputChange('email', e.target.value)}
+                            error={formErrors.email}
+                            placeholder="Enter your email"
                             required
                         />
+
+                        {/* Display Name Input (Signup only) */}
+                        {!isLogin && (
+                            <Input
+                                label="Display Name (Optional)"
+                                type="text"
+                                value={formData.displayName}
+                                onChange={(e) => handleInputChange('displayName', e.target.value)}
+                                error={formErrors.displayName}
+                                placeholder="How should we call you?"
+                            />
+                        )}
+
+                        {/* Password Input */}
+                        <Input
+                            label="Password"
+                            type="password"
+                            value={formData.password}
+                            onChange={(e) => handleInputChange('password', e.target.value)}
+                            error={formErrors.password}
+                            placeholder="Enter your password"
+                            required
+                        />
+
+                        {/* Confirm Password Input (Signup only) */}
+                        {!isLogin && (
+                            <Input
+                                label="Confirm Password"
+                                type="password"
+                                value={formData.confirmPassword}
+                                onChange={(e) => handleInputChange('confirmPassword', e.target.value)}
+                                error={formErrors.confirmPassword}
+                                placeholder="Confirm your password"
+                                required
+                            />
+                        )}
+
+                        {/* Submit Button */}
+                        <Button
+                            type="submit"
+                            loading={isSubmitting}
+                            disabled={isSubmitting || isGoogleLoading}
+                            fullWidth
+                            className="mt-6"
+                        >
+                            {isLogin ? 'Sign In' : 'Create Account'}
+                        </Button>
+                    </form>
+
+                    {/* Password Reset Link (Login only) */}
+                    {isLogin && (
+                        <div className="mt-4 text-center">
+                            <button
+                                type="button"
+                                onClick={handlePasswordReset}
+                                className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                                disabled={isSubmitting || isGoogleLoading}
+                            >
+                                Forgot your password?
+                            </button>
+                        </div>
                     )}
 
-                    {/* Submit Button */}
-                    <Button
-                        type="submit"
-                        loading={isSubmitting}
-                        disabled={isSubmitting || isGoogleLoading}
-                        fullWidth
-                        className="mt-6"
-                    >
-                        {isLogin ? 'Sign In' : 'Create Account'}
-                    </Button>
-                </form>
-
-                {/* Password Reset Link (Login only) */}
-                {isLogin && (
-                    <div className="mt-4 text-center">
+                    {/* Toggle Mode */}
+                    <div className="mt-6 text-center">
                         <button
                             type="button"
-                            onClick={handlePasswordReset}
-                            className="text-sm text-indigo-600 hover:text-indigo-700 font-medium"
+                            onClick={toggleMode}
+                            className="text-indigo-600 hover:text-indigo-700 font-medium"
                             disabled={isSubmitting || isGoogleLoading}
                         >
-                            Forgot your password?
+                            {isLogin
+                                ? "Don't have an account? Sign up"
+                                : 'Already have an account? Sign in'
+                            }
                         </button>
                     </div>
-                )}
 
-                {/* Toggle Mode */}
-                <div className="mt-6 text-center">
-                    <button
-                        type="button"
-                        onClick={toggleMode}
-                        className="text-indigo-600 hover:text-indigo-700 font-medium"
-                        disabled={isSubmitting || isGoogleLoading}
-                    >
-                        {isLogin
-                            ? "Don't have an account? Sign up"
-                            : 'Already have an account? Sign in'
-                        }
-                    </button>
-                </div>
-
-                {/* Additional Info */}
-                <div className="mt-8 text-center text-xs text-gray-500">
-                    <p>
-                        By {isLogin ? 'signing in' : 'creating an account'}, you agree to our Terms of Service and Privacy Policy.
-                    </p>
-                    {isMobile() && (
-                        <p className="mt-2">
-                            On mobile? The Google sign-in may redirect to complete authentication.
+                    {/* Additional Info */}
+                    <div className="mt-8 text-center text-xs text-gray-500">
+                        <p>
+                            By {isLogin ? 'signing in' : 'creating an account'}, you agree to our Terms of Service and Privacy Policy.
                         </p>
-                    )}
-                </div>
-            </Card>
+                        {isMobile() && (
+                            <p className="mt-2">
+                                On mobile? The Google sign-in may redirect to complete authentication.
+                            </p>
+                        )}
+                    </div>
+                </Card>
+            </div>
+
+            {/* Footer */}
+            <Footer />
         </div>
     );
 };
