@@ -12,6 +12,23 @@ const firebaseConfig = {
     appId: process.env.REACT_APP_FIREBASE_APP_ID
 };
 
+const requiredConfig = [
+    'REACT_APP_FIREBASE_API_KEY',
+    'REACT_APP_FIREBASE_AUTH_DOMAIN',
+    'REACT_APP_FIREBASE_PROJECT_ID',
+    'REACT_APP_FIREBASE_STORAGE_BUCKET',
+    'REACT_APP_FIREBASE_MESSAGING_SENDER_ID',
+    'REACT_APP_FIREBASE_APP_ID'
+];
+
+const missingConfig = requiredConfig.filter(key => !process.env[key]);
+
+if (missingConfig.length > 0) {
+    throw new Error(
+        `Missing required Firebase configuration. Please add the following environment variables to your .env file:\n${missingConfig.join('\n')}`
+    );
+}
+
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
 
