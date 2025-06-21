@@ -38,14 +38,15 @@ const App = () => {
         loading: dataLoading
     } = useUserData(user);
 
-    // Credit cards hook (assuming you have this)
+    // Credit cards hook - handle if it doesn't exist
+    const creditCardsHook = useCreditCards ? useCreditCards(user) : null;
     const {
         creditCards = [],
-        saveCreditCard,
-        updateCreditCard,
-        deleteCreditCard,
-        loading: creditCardsLoading
-    } = useCreditCards ? useCreditCards(user) : { creditCards: [], loading: false };
+        saveCreditCard = () => {},
+        updateCreditCard = () => {},
+        deleteCreditCard = () => {},
+        loading: creditCardsLoading = false
+    } = creditCardsHook || {};
 
     // Calculate tax information
     const taxCalculations = React.useMemo(() => {
@@ -53,9 +54,9 @@ const App = () => {
 
         return TaxCalculatorService.calculateTaxes(
             parseFloat(paycheckData.grossSalary),
-            paycheckData.state,
-            paycheckData.visaStatus,
-            paycheckData.filingStatus
+            paycheckData.state || 'CA',
+            paycheckData.visaStatus || 'citizen',
+            paycheckData.filingStatus || 'single'
         );
     }, [paycheckData]);
 
@@ -189,7 +190,6 @@ const App = () => {
                                         expenses={expenses}
                                         creditCards={creditCards}
                                         user={user}
-                                        hasApiKey={hasApiKey()}
                                     />
                                 )}
 

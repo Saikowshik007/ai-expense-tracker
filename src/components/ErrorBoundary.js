@@ -1,3 +1,4 @@
+// components/ErrorBoundary.js
 import React from 'react';
 
 /**
