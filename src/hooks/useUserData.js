@@ -342,11 +342,6 @@ export const useUserData = (user) => {
             setLoading(true);
             setError(null);
 
-            // Validate API key format
-            if (!FirebaseService.validateOpenAIApiKey(apiKey)) {
-                throw new Error('Invalid OpenAI API key format. Key should start with "sk-" and be 51 characters long.');
-            }
-
             // Optionally test the API key
             const isValid = await FirebaseService.testApiKey(apiKey);
             if (!isValid) {

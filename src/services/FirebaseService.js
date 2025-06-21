@@ -453,21 +453,6 @@ export class FirebaseService {
     }
 
     /**
-     * Validate OpenAI API key format
-     * @param {string} apiKey - API key to validate
-     * @returns {boolean} True if valid format
-     */
-    static validateOpenAIApiKey(apiKey) {
-        if (!apiKey || typeof apiKey !== 'string') {
-            return false;
-        }
-
-        // OpenAI API keys start with 'sk-' and are typically 51 characters long
-        const openAiKeyPattern = /^sk-[a-zA-Z0-9]{48}$/;
-        return openAiKeyPattern.test(apiKey);
-    }
-
-    /**
      * Test API key validity by making a simple API call
      * @param {string} apiKey - API key to test
      * @returns {Promise<boolean>} True if key is valid
