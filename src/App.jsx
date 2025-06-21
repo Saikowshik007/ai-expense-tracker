@@ -26,7 +26,7 @@ const App = () => {
     const { user, loading: authLoading, signOutUser } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
 
-    // User data hooks
+    // User data hooks - ALL HOOKS MUST BE CALLED AT TOP LEVEL
     const {
         paycheckData,
         expenses,
@@ -38,15 +38,14 @@ const App = () => {
         loading: dataLoading
     } = useUserData(user);
 
-    // Credit cards hook - handle if it doesn't exist
-    const creditCardsHook = useCreditCards ? useCreditCards(user) : null;
+    // Credit cards hook - ALWAYS call the hook, don't conditionally call it
     const {
-        creditCards = [],
-        saveCreditCard = () => {},
-        updateCreditCard = () => {},
-        deleteCreditCard = () => {},
-        loading: creditCardsLoading = false
-    } = creditCardsHook || {};
+        creditCards,
+        saveCreditCard,
+        updateCreditCard,
+        deleteCreditCard,
+        loading: creditCardsLoading
+    } = useCreditCards(user);
 
     // Calculate tax information
     const taxCalculations = React.useMemo(() => {
@@ -175,7 +174,7 @@ const App = () => {
                 {/* Main content */}
                 <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
                     <div className="px-4 py-6 sm:px-0">
-                        {dataLoading ? (
+                        {dataLoading || creditCardsLoading ? (
                             <div className="flex items-center justify-center py-12">
                                 <div className="text-center">
                                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto mb-2"></div>
@@ -188,7 +187,7 @@ const App = () => {
                                     <Dashboard
                                         taxCalculations={taxCalculations}
                                         expenses={expenses}
-                                        creditCards={creditCards}
+                                        creditCards={creditCards || []}
                                         user={user}
                                     />
                                 )}
@@ -212,7 +211,7 @@ const App = () => {
 
                                 {activeTab === 'creditcards' && (
                                     <CreditCardManager
-                                        creditCards={creditCards}
+                                        creditCards={creditCards || []}
                                         onSave={saveCreditCard}
                                         onUpdate={updateCreditCard}
                                         onDelete={deleteCreditCard}
