@@ -13,31 +13,203 @@ import {
 import { db } from '../firebase';
 
 /**
- * Credit Card Service - Single Responsibility Principle
+ * Enhanced Credit Card Service with Due Date Management
  * Handles all credit card related business logic and Firebase operations
  */
 export class CreditCardService {
     static COLLECTION_NAME = 'creditCards';
 
     /**
-     * Save credit card to Firebase
+     * Get ordinal suffix for numbers (1st, 2nd, 3rd, etc.)
+     * @param {number} day - Day number
+     * @returns {string} Ordinal suffix
+     */
+    static getOrdinalSuffix(day) {
+        if (day >= 11 && day <= 13) return 'th';
+        switch (day % 10) {
+            case 1: return 'st';
+            case 2: return 'nd';
+            case 3: return 'rd';
+            default: return 'th';
+        }
+    }
+
+    /**
+     * Calculate next due date based on due date type
+     * @param {Object} card - Credit card data
+     * @param {Date} referenceDate - Reference date (default: today)
+     * @returns {Date} Next due date
+     */
+    static calculateNextDueDate(card, referenceDate = new Date()) {
+        const {
+            dueDateType = 'fixed', // 'fixed', 'floating', 'statement_based', 'manual'
+            dueDateDay,             // Day of month (1-31) for fixed dates
+            daysAfterStatement,     // Days after statement for floating dates
+            statementDate,          // Statement date for statement-based
+            dueDate                // Current/original due date
+        } = card;
+
+        const today = new Date(referenceDate);
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+
+        switch (dueDateType) {
+            case 'fixed':
+                // Fixed day each month (most common)
+                const dayOfMonth = dueDateDay || new Date(dueDate).getDate();
+                let nextDue = new Date(currentYear, currentMonth, dayOfMonth);
+
+                // If this month's due date has passed, move to next month
+                if (nextDue <= today) {
+                    nextDue = new Date(currentYear, currentMonth + 1, dayOfMonth);
+                }
+
+                // Handle months with fewer days (e.g., Feb 30th -> Feb 28th)
+                if (nextDue.getDate() !== dayOfMonth) {
+                    nextDue = new Date(nextDue.getFullYear(), nextDue.getMonth() + 1, 0); // Last day of month
+                }
+
+                return nextDue;
+
+            case 'floating':
+                // X days after statement date
+                if (!statementDate || !daysAfterStatement) {
+                    return new Date(dueDate); // Fallback to original
+                }
+
+                const statementDay = new Date(statementDate).getDate();
+                let statementThisMonth = new Date(currentYear, currentMonth, statementDay);
+
+                // If this month's statement has passed, use next month's statement
+                if (statementThisMonth <= today) {
+                    statementThisMonth = new Date(currentYear, currentMonth + 1, statementDay);
+                }
+
+                const floatingDue = new Date(statementThisMonth);
+                floatingDue.setDate(floatingDue.getDate() + parseInt(daysAfterStatement));
+                return floatingDue;
+
+            case 'statement_based':
+                // Due on specific day relative to statement (e.g., 25 days after statement)
+                return this.calculateNextDueDate({
+                    ...card,
+                    dueDateType: 'floating'
+                }, referenceDate);
+
+            default:
+                // Default to original due date (manual)
+                return new Date(dueDate);
+        }
+    }
+
+    /**
+     * Check if due date needs updating and update if necessary
+     * @param {Object} card - Credit card data
+     * @returns {Object} Updated card data if changes were made
+     */
+    static updateDueDateIfNeeded(card) {
+        if (!card.dueDate || card.dueDateType === 'manual') {
+            return card; // Don't auto-update manual due dates
+        }
+
+        const currentDueDate = new Date(card.dueDate);
+        const today = new Date();
+
+        // If due date is in the past and it's a recurring type, calculate next due date
+        if (currentDueDate < today && ['fixed', 'floating', 'statement_based'].includes(card.dueDateType)) {
+            const nextDueDate = this.calculateNextDueDate(card);
+
+            return {
+                ...card,
+                dueDate: nextDueDate.toISOString().split('T')[0], // Format as YYYY-MM-DD
+                lastDueDateUpdate: new Date().toISOString()
+            };
+        }
+
+        return card;
+    }
+
+    /**
+     * Get days until due date (enhanced version)
+     * @param {Object} card - Credit card data
+     * @returns {Object} Due date information
+     */
+    static getDueDateInfo(card) {
+        if (!card.dueDate) {
+            return {
+                daysUntilDue: null,
+                status: 'no_date',
+                nextDueDate: null,
+                color: 'text-gray-500'
+            };
+        }
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0); // Reset time for accurate day calculation
+
+        const dueDate = new Date(card.dueDate);
+        dueDate.setHours(0, 0, 0, 0);
+
+        const diffTime = dueDate - today;
+        const daysUntilDue = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        let status, color;
+
+        if (daysUntilDue < 0) {
+            status = 'overdue';
+            color = 'text-red-600';
+        } else if (daysUntilDue === 0) {
+            status = 'due_today';
+            color = 'text-red-600';
+        } else if (daysUntilDue <= 3) {
+            status = 'due_soon';
+            color = 'text-orange-600';
+        } else if (daysUntilDue <= 7) {
+            status = 'due_this_week';
+            color = 'text-yellow-600';
+        } else {
+            status = 'due_later';
+            color = 'text-green-600';
+        }
+
+        return {
+            daysUntilDue,
+            status,
+            nextDueDate: dueDate,
+            color,
+            isOverdue: daysUntilDue < 0,
+            isDueToday: daysUntilDue === 0,
+            isDueSoon: daysUntilDue <= 3 && daysUntilDue >= 0
+        };
+    }
+
+    /**
+     * Save credit card with enhanced due date handling
      * @param {string} userId - User ID
      * @param {Object} cardData - Credit card data
      * @returns {Promise<string>} Document ID
      */
     static async saveCreditCard(userId, cardData) {
         try {
-            const cardWithMetadata = {
+            // Process due date information
+            const processedCard = {
                 ...cardData,
                 userId,
                 createdAt: new Date(),
                 updatedAt: new Date(),
+                dueDateType: cardData.dueDateType || 'fixed',
                 id: null // Will be set after creation
             };
 
+            // Calculate next due date if it's a recurring type
+            if (processedCard.dueDateType !== 'manual' && processedCard.dueDate) {
+                const updatedCard = this.updateDueDateIfNeeded(processedCard);
+                Object.assign(processedCard, updatedCard);
+            }
+
             const docRef = await addDoc(
                 collection(db, this.COLLECTION_NAME),
-                cardWithMetadata
+                processedCard
             );
 
             // Update with the document ID
@@ -52,18 +224,27 @@ export class CreditCardService {
     }
 
     /**
-     * Update credit card in Firebase
+     * Update credit card with due date processing
      * @param {string} cardId - Card ID
      * @param {Object} updateData - Data to update
      * @returns {Promise<void>}
      */
     static async updateCreditCard(cardId, updateData) {
         try {
-            const cardDoc = doc(db, this.COLLECTION_NAME, cardId);
-            await updateDoc(cardDoc, {
+            const processedUpdate = {
                 ...updateData,
                 updatedAt: new Date()
-            });
+            };
+
+            // Process due date if it's being updated
+            if (updateData.dueDate || updateData.dueDateType) {
+                const cardWithUpdate = { ...updateData };
+                const updatedCard = this.updateDueDateIfNeeded(cardWithUpdate);
+                Object.assign(processedUpdate, updatedCard);
+            }
+
+            const cardDoc = doc(db, this.COLLECTION_NAME, cardId);
+            await updateDoc(cardDoc, processedUpdate);
 
             console.log('Credit card updated:', cardId);
         } catch (error) {
@@ -88,7 +269,7 @@ export class CreditCardService {
     }
 
     /**
-     * Get all credit cards for a user
+     * Get all credit cards for a user with updated due dates
      * @param {string} userId - User ID
      * @returns {Promise<Array>} Array of credit cards
      */
@@ -104,10 +285,14 @@ export class CreditCardService {
             const creditCards = [];
 
             querySnapshot.forEach((doc) => {
-                creditCards.push({
+                const cardData = {
                     id: doc.id,
                     ...doc.data()
-                });
+                };
+
+                // Update due date if needed
+                const updatedCard = this.updateDueDateIfNeeded(cardData);
+                creditCards.push(updatedCard);
             });
 
             return creditCards;
@@ -134,16 +319,49 @@ export class CreditCardService {
             return onSnapshot(q, (querySnapshot) => {
                 const creditCards = [];
                 querySnapshot.forEach((doc) => {
-                    creditCards.push({
+                    const cardData = {
                         id: doc.id,
                         ...doc.data()
-                    });
+                    };
+
+                    // Update due date if needed
+                    const updatedCard = this.updateDueDateIfNeeded(cardData);
+                    creditCards.push(updatedCard);
                 });
                 callback(creditCards);
             });
         } catch (error) {
             console.error('Error subscribing to credit cards:', error);
             throw new Error('Failed to subscribe to credit card updates');
+        }
+    }
+
+    /**
+     * Batch update due dates for all user's cards
+     * @param {string} userId - User ID
+     * @returns {Promise<Array>} Updated cards
+     */
+    static async updateAllDueDates(userId) {
+        try {
+            const cards = await this.getCreditCards(userId);
+            const updatedCards = [];
+
+            for (const card of cards) {
+                const updatedCard = this.updateDueDateIfNeeded(card);
+
+                if (updatedCard.dueDate !== card.dueDate) {
+                    await this.updateCreditCard(card.id, {
+                        dueDate: updatedCard.dueDate,
+                        lastDueDateUpdate: updatedCard.lastDueDateUpdate
+                    });
+                    updatedCards.push(updatedCard);
+                }
+            }
+
+            return updatedCards;
+        } catch (error) {
+            console.error('Error updating due dates:', error);
+            throw new Error('Failed to update due dates');
         }
     }
 
@@ -375,6 +593,58 @@ export class CreditCardService {
 
         const monthlyRate = annualRate / 100 / 12;
         return Math.round(balance * monthlyRate * 100) / 100;
+    }
+
+    /**
+     * Generate due date display text
+     * @param {Object} card - Credit card data
+     * @returns {string} Display text for due date
+     */
+    static getDueDateDisplay(card) {
+        const dueDateInfo = this.getDueDateInfo(card);
+
+        if (!dueDateInfo.nextDueDate) {
+            return 'No due date set';
+        }
+
+        const dueDate = dueDateInfo.nextDueDate.toLocaleDateString();
+        const { daysUntilDue } = dueDateInfo;
+
+        if (daysUntilDue === 0) {
+            return `${dueDate} (Due Today!)`;
+        } else if (daysUntilDue < 0) {
+            return `${dueDate} (${Math.abs(daysUntilDue)} days overdue)`;
+        } else {
+            return `${dueDate} (${daysUntilDue} days left)`;
+        }
+    }
+
+    /**
+     * Get due date type description
+     * @param {Object} card - Credit card data
+     * @returns {string} Description of due date type
+     */
+    static getDueDateTypeDescription(card) {
+        const { dueDateType, dueDateDay, daysAfterStatement, statementDate } = card;
+
+        switch (dueDateType) {
+            case 'fixed':
+                const day = dueDateDay || (card.dueDate ? new Date(card.dueDate).getDate() : 1);
+                return `Every ${day}${this.getOrdinalSuffix(day)} of the month`;
+
+            case 'floating':
+                if (daysAfterStatement && statementDate) {
+                    const stmtDay = new Date(statementDate).getDate();
+                    return `${daysAfterStatement} days after statement (${stmtDay}${this.getOrdinalSuffix(stmtDay)})`;
+                }
+                return 'Days after statement date';
+
+            case 'manual':
+                return 'Manual updates';
+
+            default:
+                return 'Fixed monthly date';
+        }
     }
 
     /**

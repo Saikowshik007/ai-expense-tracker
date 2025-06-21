@@ -12,14 +12,15 @@ import {
     Edit3,
     Check,
     X,
-    Clock
+    Clock,
+    Info
 } from 'lucide-react';
 import { Button, Card, Input, Alert, LoadingSpinner } from './UI';
 import { CreditCardService } from '../services/CreditCardService';
 
 /**
- * Credit Card Manager Component
- * Handles credit card tracking with payment reminders and balances
+ * Enhanced Credit Card Manager Component
+ * Handles credit card tracking with payment reminders, balances, and auto-updating due dates
  */
 const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userId }) => {
     const [showAddForm, setShowAddForm] = useState(false);
@@ -35,6 +36,9 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
         currentBalance: '',
         interestRate: '',
         dueDate: '',
+        dueDateType: 'fixed',
+        dueDateDay: '',
+        daysAfterStatement: '',
         minimumPayment: '',
         lastPaidDate: '',
         lastPaidAmount: '',
@@ -75,6 +79,21 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
         } else {
             // Fallback to direct service call
             return await CreditCardService.deleteCreditCard(cardId);
+        }
+    };
+
+    /**
+     * Get ordinal suffix for numbers (1st, 2nd, 3rd, etc.)
+     * @param {number} day - Day number
+     * @returns {string} Ordinal suffix
+     */
+    const getOrdinalSuffix = (day) => {
+        if (day >= 11 && day <= 13) return 'th';
+        switch (day % 10) {
+            case 1: return 'st';
+            case 2: return 'nd';
+            case 3: return 'rd';
+            default: return 'th';
         }
     };
 
@@ -179,6 +198,22 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
             errors.lastPaidAmount = 'Must be a valid number';
         }
 
+        // Validate due date type specific fields
+        if (formData.dueDateType === 'floating') {
+            if (!formData.statementDate) {
+                errors.statementDate = 'Statement date is required for floating due dates';
+            }
+            if (!formData.daysAfterStatement) {
+                errors.daysAfterStatement = 'Days after statement is required';
+            } else if (isNaN(parseInt(formData.daysAfterStatement)) || parseInt(formData.daysAfterStatement) < 1) {
+                errors.daysAfterStatement = 'Must be a valid number greater than 0';
+            }
+        }
+
+        if (formData.dueDateDay && (isNaN(parseInt(formData.dueDateDay)) || parseInt(formData.dueDateDay) < 1 || parseInt(formData.dueDateDay) > 31)) {
+            errors.dueDateDay = 'Must be between 1 and 31';
+        }
+
         return errors;
     };
 
@@ -203,7 +238,9 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
                 currentBalance: parseFloat(formData.currentBalance) || 0,
                 interestRate: parseFloat(formData.interestRate) || 0,
                 minimumPayment: parseFloat(formData.minimumPayment) || 0,
-                lastPaidAmount: parseFloat(formData.lastPaidAmount) || 0
+                lastPaidAmount: parseFloat(formData.lastPaidAmount) || 0,
+                dueDateDay: formData.dueDateDay ? parseInt(formData.dueDateDay) : null,
+                daysAfterStatement: formData.daysAfterStatement ? parseInt(formData.daysAfterStatement) : null
             };
 
             if (editingCard) {
@@ -235,6 +272,9 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
             currentBalance: '',
             interestRate: '',
             dueDate: '',
+            dueDateType: 'fixed',
+            dueDateDay: '',
+            daysAfterStatement: '',
             minimumPayment: '',
             lastPaidDate: '',
             lastPaidAmount: '',
@@ -289,6 +329,9 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
             currentBalance: card.currentBalance || '',
             interestRate: card.interestRate || '',
             dueDate: card.dueDate || '',
+            dueDateType: card.dueDateType || 'fixed',
+            dueDateDay: card.dueDateDay || '',
+            daysAfterStatement: card.daysAfterStatement || '',
             minimumPayment: card.minimumPayment || '',
             lastPaidDate: card.lastPaidDate || '',
             lastPaidAmount: card.lastPaidAmount || '',
@@ -359,7 +402,7 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
             <div className="flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-bold text-gray-900">Credit Cards</h2>
-                    <p className="text-gray-600">Track balances, due dates, and payments</p>
+                    <p className="text-gray-600">Track balances, due dates, and payments with auto-updating due dates</p>
                 </div>
                 <Button
                     onClick={() => setShowAddForm(true)}
@@ -382,7 +425,7 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
                                 return (
                                     <li key={card.id}>
                                         {card.name} - Due {daysUntil === 0 ? 'today' : `in ${daysUntil} days`}
-                                        {card.minimumPayment && ` (Min: $${parseFloat(card.minimumPayment).toLocaleString()})`}
+                                        {card.minimumPayment && ` (Min: ${parseFloat(card.minimumPayment).toLocaleString()})`}
                                     </li>
                                 );
                             })}
@@ -464,6 +507,7 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
                         const utilization = calculateUtilization(card);
                         const isBalanceVisible = showBalances[card.id];
                         const daysUntilDue = getDaysUntilDue(card.dueDate);
+                        const dueDateTypeDesc = CreditCardService.getDueDateTypeDescription(card);
 
                         return (
                             <Card key={card.id} className="p-6">
@@ -512,14 +556,14 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-gray-500">Current Balance</span>
                                         <span className="font-semibold text-red-600">
-                      {isBalanceVisible ? `$${parseFloat(card.currentBalance || 0).toLocaleString()}` : '••••••'}
+                      {isBalanceVisible ? `${parseFloat(card.currentBalance || 0).toLocaleString()}` : '••••••'}
                     </span>
                                     </div>
 
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-gray-500">Credit Limit</span>
                                         <span className="font-semibold text-gray-900">
-                      {isBalanceVisible ? `$${parseFloat(card.creditLimit || 0).toLocaleString()}` : '••••••'}
+                      {isBalanceVisible ? `${parseFloat(card.creditLimit || 0).toLocaleString()}` : '••••••'}
                     </span>
                                     </div>
 
@@ -544,23 +588,30 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
 
                                     {/* Payment Information */}
                                     <div className="pt-3 border-t border-gray-100 space-y-2">
-                                        {/* Due Date */}
+                                        {/* Due Date with Type Info */}
                                         {card.dueDate && (
-                                            <div className="flex justify-between items-center">
-                        <span className="text-xs text-gray-500 flex items-center">
-                          <Calendar className="w-3 h-3 mr-1" />
-                          Due Date
-                        </span>
-                                                <span className={`text-xs font-medium ${getDueDateColor(daysUntilDue)}`}>
-                          {new Date(card.dueDate).toLocaleDateString()}
-                                                    {daysUntilDue !== null && (
-                                                        <span className="ml-1">
-                              ({daysUntilDue === 0 ? 'Today' :
-                                                            daysUntilDue < 0 ? `${Math.abs(daysUntilDue)}d overdue` :
-                                                                `${daysUntilDue}d left`})
-                            </span>
-                                                    )}
-                        </span>
+                                            <div className="space-y-1">
+                                                <div className="flex justify-between items-center">
+                          <span className="text-xs text-gray-500 flex items-center">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            Due Date
+                          </span>
+                                                    <span className={`text-xs font-medium ${getDueDateColor(daysUntilDue)}`}>
+                            {new Date(card.dueDate).toLocaleDateString()}
+                                                        {daysUntilDue !== null && (
+                                                            <span className="ml-1">
+                                ({daysUntilDue === 0 ? 'Today' :
+                                                                daysUntilDue < 0 ? `${Math.abs(daysUntilDue)}d overdue` :
+                                                                    `${daysUntilDue}d left`})
+                              </span>
+                                                        )}
+                          </span>
+                                                </div>
+                                                {/* Due Date Type Description */}
+                                                <div className="flex items-center text-xs text-gray-400">
+                                                    <Info className="w-3 h-3 mr-1" />
+                                                    <span>{dueDateTypeDesc}</span>
+                                                </div>
                                             </div>
                                         )}
 
@@ -641,7 +692,7 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
             {/* Add/Edit Card Modal */}
             {showAddForm && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-                    <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                    <Card className="w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                         <div className="p-6">
                             <div className="flex justify-between items-center mb-6">
                                 <h3 className="text-lg font-semibold text-gray-900">
@@ -659,132 +710,236 @@ const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userI
                                 </button>
                             </div>
 
-                            <form onSubmit={handleSubmit} className="space-y-4">
+                            <form onSubmit={handleSubmit} className="space-y-6">
                                 {/* Basic Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Card Name"
-                                        value={formData.name}
-                                        onChange={(e) => handleInputChange('name', e.target.value)}
-                                        error={formErrors.name}
-                                        placeholder="e.g., Chase Freedom"
-                                        required
-                                    />
+                                <div>
+                                    <h4 className="font-medium text-gray-900 mb-4">Basic Information</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Input
+                                            label="Card Name"
+                                            value={formData.name}
+                                            onChange={(e) => handleInputChange('name', e.target.value)}
+                                            error={formErrors.name}
+                                            placeholder="e.g., Chase Freedom"
+                                            required
+                                        />
 
-                                    <Input
-                                        label="Bank Name"
-                                        value={formData.bankName}
-                                        onChange={(e) => handleInputChange('bankName', e.target.value)}
-                                        error={formErrors.bankName}
-                                        placeholder="e.g., Chase Bank"
-                                    />
-                                </div>
+                                        <Input
+                                            label="Bank Name"
+                                            value={formData.bankName}
+                                            onChange={(e) => handleInputChange('bankName', e.target.value)}
+                                            error={formErrors.bankName}
+                                            placeholder="e.g., Chase Bank"
+                                        />
+                                    </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Last Four Digits"
-                                        value={formData.lastFour}
-                                        onChange={(e) => handleInputChange('lastFour', e.target.value)}
-                                        error={formErrors.lastFour}
-                                        placeholder="1234"
-                                        maxLength={4}
-                                        required
-                                    />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        <Input
+                                            label="Last Four Digits"
+                                            value={formData.lastFour}
+                                            onChange={(e) => handleInputChange('lastFour', e.target.value)}
+                                            error={formErrors.lastFour}
+                                            placeholder="1234"
+                                            maxLength={4}
+                                            required
+                                        />
 
-                                    <div>
-                                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                                            Card Type
-                                        </label>
-                                        <select
-                                            value={formData.cardType}
-                                            onChange={(e) => handleInputChange('cardType', e.target.value)}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                                        >
-                                            <option value="credit">Credit Card</option>
-                                            <option value="debit">Debit Card</option>
-                                        </select>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1">
+                                                Card Type
+                                            </label>
+                                            <select
+                                                value={formData.cardType}
+                                                onChange={(e) => handleInputChange('cardType', e.target.value)}
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                            >
+                                                <option value="credit">Credit Card</option>
+                                                <option value="debit">Debit Card</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
                                 {/* Financial Details */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Credit Limit"
-                                        type="number"
-                                        value={formData.creditLimit}
-                                        onChange={(e) => handleInputChange('creditLimit', e.target.value)}
-                                        error={formErrors.creditLimit}
-                                        placeholder="5000"
-                                    />
+                                <div>
+                                    <h4 className="font-medium text-gray-900 mb-4">Financial Information</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Input
+                                            label="Credit Limit"
+                                            type="number"
+                                            value={formData.creditLimit}
+                                            onChange={(e) => handleInputChange('creditLimit', e.target.value)}
+                                            error={formErrors.creditLimit}
+                                            placeholder="5000"
+                                        />
 
-                                    <Input
-                                        label="Current Balance"
-                                        type="number"
-                                        value={formData.currentBalance}
-                                        onChange={(e) => handleInputChange('currentBalance', e.target.value)}
-                                        error={formErrors.currentBalance}
-                                        placeholder="1200"
-                                    />
+                                        <Input
+                                            label="Current Balance"
+                                            type="number"
+                                            value={formData.currentBalance}
+                                            onChange={(e) => handleInputChange('currentBalance', e.target.value)}
+                                            error={formErrors.currentBalance}
+                                            placeholder="1200"
+                                        />
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                                        <Input
+                                            label="Interest Rate (% APR)"
+                                            type="number"
+                                            step="0.01"
+                                            value={formData.interestRate}
+                                            onChange={(e) => handleInputChange('interestRate', e.target.value)}
+                                            error={formErrors.interestRate}
+                                            placeholder="18.99"
+                                        />
+
+                                        <Input
+                                            label="Minimum Payment"
+                                            type="number"
+                                            value={formData.minimumPayment}
+                                            onChange={(e) => handleInputChange('minimumPayment', e.target.value)}
+                                            error={formErrors.minimumPayment}
+                                            placeholder="35"
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Interest Rate (% APR)"
-                                        type="number"
-                                        step="0.01"
-                                        value={formData.interestRate}
-                                        onChange={(e) => handleInputChange('interestRate', e.target.value)}
-                                        error={formErrors.interestRate}
-                                        placeholder="18.99"
-                                    />
+                                {/* Due Date Configuration */}
+                                <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+                                    <h4 className="font-medium text-gray-900">Due Date Settings</h4>
 
-                                    <Input
-                                        label="Minimum Payment"
-                                        type="number"
-                                        value={formData.minimumPayment}
-                                        onChange={(e) => handleInputChange('minimumPayment', e.target.value)}
-                                        error={formErrors.minimumPayment}
-                                        placeholder="35"
-                                    />
+                                    {/* Due Date Type */}
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                                            Due Date Type
+                                        </label>
+                                        <select
+                                            value={formData.dueDateType}
+                                            onChange={(e) => handleInputChange('dueDateType', e.target.value)}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                        >
+                                            <option value="fixed">Fixed Day Each Month (e.g., always 15th)</option>
+                                            <option value="floating">Days After Statement Date</option>
+                                            <option value="manual">Manual (I'll update myself)</option>
+                                        </select>
+                                    </div>
+
+                                    {/* Fixed Due Date */}
+                                    {(formData.dueDateType === 'fixed' || !formData.dueDateType) && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Input
+                                                label="Due Date"
+                                                type="date"
+                                                value={formData.dueDate}
+                                                onChange={(e) => handleInputChange('dueDate', e.target.value)}
+                                                error={formErrors.dueDate}
+                                                help="This will auto-update each month"
+                                            />
+
+                                            <Input
+                                                label="Day of Month (1-31)"
+                                                type="number"
+                                                min="1"
+                                                max="31"
+                                                value={formData.dueDateDay}
+                                                onChange={(e) => handleInputChange('dueDateDay', e.target.value)}
+                                                error={formErrors.dueDateDay}
+                                                placeholder="15"
+                                                help="Override if different from date above"
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Floating Due Date */}
+                                    {formData.dueDateType === 'floating' && (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <Input
+                                                label="Statement Date"
+                                                type="date"
+                                                value={formData.statementDate}
+                                                onChange={(e) => handleInputChange('statementDate', e.target.value)}
+                                                error={formErrors.statementDate}
+                                                required
+                                            />
+
+                                            <Input
+                                                label="Days After Statement"
+                                                type="number"
+                                                min="1"
+                                                max="45"
+                                                value={formData.daysAfterStatement}
+                                                onChange={(e) => handleInputChange('daysAfterStatement', e.target.value)}
+                                                error={formErrors.daysAfterStatement}
+                                                placeholder="25"
+                                                help="Usually 21-25 days"
+                                                required
+                                            />
+                                        </div>
+                                    )}
+
+                                    {/* Manual Due Date */}
+                                    {formData.dueDateType === 'manual' && (
+                                        <Input
+                                            label="Due Date"
+                                            type="date"
+                                            value={formData.dueDate}
+                                            onChange={(e) => handleInputChange('dueDate', e.target.value)}
+                                            error={formErrors.dueDate}
+                                            help="You'll need to update this manually each month"
+                                        />
+                                    )}
+
+                                    {/* Due Date Preview */}
+                                    {formData.dueDate && (
+                                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+                                            <p className="text-sm text-blue-800">
+                                                <strong>Preview:</strong>
+                                                {formData.dueDateType === 'fixed' ?
+                                                    ` Due every ${formData.dueDateDay || new Date(formData.dueDate).getDate()}${getOrdinalSuffix(formData.dueDateDay || new Date(formData.dueDate).getDate())} of the month` :
+                                                    formData.dueDateType === 'floating' ?
+                                                        ` Due ${formData.daysAfterStatement || 25} days after statement (${formData.statementDate ? new Date(formData.statementDate).getDate() : '?'}${getOrdinalSuffix(formData.statementDate ? new Date(formData.statementDate).getDate() : 1)})` :
+                                                        ' Manual due date - you\'ll update this yourself'
+                                                }
+                                            </p>
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Payment Dates */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Due Date"
-                                        type="date"
-                                        value={formData.dueDate}
-                                        onChange={(e) => handleInputChange('dueDate', e.target.value)}
-                                        error={formErrors.dueDate}
-                                    />
-
+                                {/* Statement Date */}
+                                <div>
+                                    <h4 className="font-medium text-gray-900 mb-4">Statement Information</h4>
                                     <Input
                                         label="Statement Date"
                                         type="date"
                                         value={formData.statementDate}
                                         onChange={(e) => handleInputChange('statementDate', e.target.value)}
                                         error={formErrors.statementDate}
+                                        help="When your monthly statement is generated"
                                     />
                                 </div>
 
                                 {/* Last Payment Info */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <Input
-                                        label="Last Payment Date"
-                                        type="date"
-                                        value={formData.lastPaidDate}
-                                        onChange={(e) => handleInputChange('lastPaidDate', e.target.value)}
-                                        error={formErrors.lastPaidDate}
-                                    />
+                                <div>
+                                    <h4 className="font-medium text-gray-900 mb-4">Last Payment Information</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <Input
+                                            label="Last Payment Date"
+                                            type="date"
+                                            value={formData.lastPaidDate}
+                                            onChange={(e) => handleInputChange('lastPaidDate', e.target.value)}
+                                            error={formErrors.lastPaidDate}
+                                        />
 
-                                    <Input
-                                        label="Last Payment Amount"
-                                        type="number"
-                                        value={formData.lastPaidAmount}
-                                        onChange={(e) => handleInputChange('lastPaidAmount', e.target.value)}
-                                        error={formErrors.lastPaidAmount}
-                                        placeholder="100"
-                                    />
+                                        <Input
+                                            label="Last Payment Amount"
+                                            type="number"
+                                            value={formData.lastPaidAmount}
+                                            onChange={(e) => handleInputChange('lastPaidAmount', e.target.value)}
+                                            error={formErrors.lastPaidAmount}
+                                            placeholder="100"
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Notes */}
