@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Calculator, LogOut, User } from 'lucide-react';
 import { useAuth } from './hooks/useAuth';
 import { useUserData } from './hooks/useUserData';
+import { useCreditCards } from './hooks/useCreditCards'; // Add this new hook
 import { TaxCalculatorService } from './services/TaxCalculatorService';
 import AuthForm from './components/AuthForm';
 import Dashboard from './components/Dashboard';
@@ -25,15 +26,20 @@ const App = () => {
     const {
         paycheckData,
         expenses,
-        creditCards,
         loading: dataLoading,
         savePaycheckData,
         saveExpense,
-        deleteExpense,
-        saveCreditCard,
-        deleteCreditCard,
-        updateCreditCard
+        deleteExpense
     } = useUserData(user);
+
+    // Add separate hook for credit cards
+    const {
+        creditCards,
+        loading: creditCardsLoading,
+        saveCreditCard,
+        updateCreditCard,
+        deleteCreditCard
+    } = useCreditCards(user);
 
     // Memoize tax calculations to avoid recalculation on every render
     const taxCalculations = useMemo(() => {
@@ -76,6 +82,8 @@ const App = () => {
         { id: 'expenses', label: 'Expenses' },
         { id: 'creditcards', label: 'Credit Cards' }
     ];
+
+    const isLoading = dataLoading || creditCardsLoading;
 
     return (
         <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -171,7 +179,7 @@ const App = () => {
 
             {/* Main Content */}
             <main className="flex-1 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-                {dataLoading ? (
+                {isLoading ? (
                     <div className="flex justify-center">
                         <LoadingSpinner text="Loading your data..." />
                     </div>
@@ -206,6 +214,7 @@ const App = () => {
                                 onSave={saveCreditCard}
                                 onDelete={deleteCreditCard}
                                 onUpdate={updateCreditCard}
+                                userId={user?.uid} // Pass userId as fallback
                             />
                         )}
                     </>
