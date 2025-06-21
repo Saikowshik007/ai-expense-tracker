@@ -20,6 +20,176 @@ import { FirebaseService } from '../services/FirebaseService';
 import { Card, Button, Alert, Input, Badge, LoadingSpinner } from './UI';
 
 /**
+ * Enhanced text formatting function specifically for financial insights
+ */
+const formatInsightsContent = (text) => {
+    if (!text) return null;
+
+    const lines = text.split('\n');
+    const elements = [];
+    let currentList = [];
+    let inOrderedList = false;
+    let inUnorderedList = false;
+
+    const flushList = () => {
+        if (currentList.length > 0) {
+            if (inOrderedList) {
+                elements.push(
+                    <ol key={`ol-${elements.length}`} className="list-decimal list-inside space-y-2 mb-4 ml-4">
+                        {currentList}
+                    </ol>
+                );
+            } else if (inUnorderedList) {
+                elements.push(
+                    <ul key={`ul-${elements.length}`} className="list-disc list-inside space-y-2 mb-4 ml-4">
+                        {currentList}
+                    </ul>
+                );
+            }
+            currentList = [];
+            inOrderedList = false;
+            inUnorderedList = false;
+        }
+    };
+
+    const formatInlineText = (text) => {
+        // Handle bold text (**text** or **text:**)
+        let formatted = text.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-gray-900">$1</strong>');
+
+        // Handle dollar amounts - make them stand out
+        formatted = formatted.replace(/\$[\d,]+(?:\.\d{2})?/g, '<span class="font-semibold text-green-600">$&</span>');
+
+        // Handle percentages
+        formatted = formatted.replace(/\d+(?:\.\d+)?%/g, '<span class="font-medium text-blue-600">$&</span>');
+
+        return formatted;
+    };
+
+    lines.forEach((line, index) => {
+        const trimmedLine = line.trim();
+
+        if (!trimmedLine) {
+            flushList();
+            return;
+        }
+
+        // Handle main headers (### anything)
+        if (trimmedLine.match(/^###\s+/)) {
+            flushList();
+            const headerText = trimmedLine.replace(/^###\s+/, '').replace(/\*\*(.*?)\*\*/g, '$1');
+            elements.push(
+                <h3 key={`h3-${index}`} className="text-lg font-bold text-gray-900 mt-6 mb-3 border-b border-gray-200 pb-2">
+                    {headerText}
+                </h3>
+            );
+            return;
+        }
+
+        // Handle section headers (**Header** only, not mixed with other content)
+        if (trimmedLine.match(/^\*\*([^*]+)\*\*:?\s*$/) && !trimmedLine.includes('Method') && !trimmedLine.includes(':')) {
+            flushList();
+            const headerText = trimmedLine.replace(/^\*\*(.*?)\*\*:?\s*$/, '$1');
+            elements.push(
+                <h4 key={`h4-${index}`} className="text-base font-semibold text-gray-800 mt-5 mb-3">
+                    {headerText}
+                </h4>
+            );
+            return;
+        }
+
+        // Handle numbered list items (1. Item, 2. Item, etc.)
+        const numberedMatch = trimmedLine.match(/^(\d+)\.\s*(.+)/);
+        if (numberedMatch) {
+            if (!inOrderedList) {
+                flushList();
+                inOrderedList = true;
+            }
+
+            const itemText = formatInlineText(numberedMatch[2]);
+            currentList.push(
+                <li key={`li-${index}`}
+                    className="text-gray-700 leading-relaxed mb-2"
+                    dangerouslySetInnerHTML={{ __html: itemText }}
+                />
+            );
+            return;
+        }
+
+        // Handle unordered list items (- Item, • Item)
+        const bulletMatch = trimmedLine.match(/^[-•]\s*(.+)/);
+        if (bulletMatch) {
+            if (!inUnorderedList) {
+                flushList();
+                inUnorderedList = true;
+            }
+
+            const itemText = formatInlineText(bulletMatch[1]);
+            currentList.push(
+                <li key={`li-${index}`}
+                    className="text-gray-700 leading-relaxed mb-2"
+                    dangerouslySetInnerHTML={{ __html: itemText }}
+                />
+            );
+            return;
+        }
+
+        // Handle sub-items with additional indentation (-- Item or   - Item)
+        const subItemMatch = trimmedLine.match(/^(?:--|  [-•])\s*(.+)/);
+        if (subItemMatch && (inOrderedList || inUnorderedList)) {
+            const itemText = formatInlineText(subItemMatch[1]);
+            currentList.push(
+                <li key={`subli-${index}`}
+                    className="text-gray-600 leading-relaxed ml-6 list-none relative before:content-['↳'] before:absolute before:-left-4 before:text-gray-400"
+                    dangerouslySetInnerHTML={{ __html: itemText }}
+                />
+            );
+            return;
+        }
+
+        // Handle score lines (Financial Health Score: 6/10)
+        if (trimmedLine.match(/score.*?\d+\/10/i)) {
+            flushList();
+            const formattedText = formatInlineText(trimmedLine);
+            elements.push(
+                <div key={`score-${index}`} className="bg-blue-50 border border-blue-200 rounded-lg p-4 my-4">
+                    <p className="text-blue-900 font-medium text-lg" dangerouslySetInnerHTML={{ __html: formattedText }} />
+                </div>
+            );
+            return;
+        }
+
+        // Handle explanation or regular paragraphs
+        if (trimmedLine.length > 0) {
+            flushList();
+            const formattedText = formatInlineText(trimmedLine);
+
+            // Check if this looks like an explanation or important note
+            if (trimmedLine.toLowerCase().includes('explanation:') ||
+                trimmedLine.toLowerCase().includes('important:') ||
+                trimmedLine.toLowerCase().includes('note:')) {
+                elements.push(
+                    <div key={`note-${index}`} className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 my-3">
+                        <p className="text-yellow-900 leading-relaxed" dangerouslySetInnerHTML={{ __html: formattedText }} />
+                    </div>
+                );
+            } else {
+                elements.push(
+                    <p key={`p-${index}`}
+                       className="text-gray-700 leading-relaxed mb-3"
+                       dangerouslySetInnerHTML={{ __html: formattedText }}
+                    />
+                );
+            }
+        }
+    });
+
+    // Flush any remaining list items
+    flushList();
+
+    return <div className="space-y-2">{elements}</div>;
+};
+
+/**
  * Enhanced Financial Insights Component
  * Better text formatting and Firebase storage
  */
@@ -103,74 +273,39 @@ const FinancialInsights = ({
     };
 
     /**
-     * Parse insights text into structured format
+     * Enhanced insights parsing with better structure extraction
      */
-    const parseInsightsText = (text) => {
+    const parseStructuredInsights = (text) => {
         if (!text) return null;
 
-        const sections = {};
-        let currentSection = '';
-        let currentContent = '';
+        const result = {
+            financialHealthScore: null,
+            priorityActions: [],
+            sections: {},
+            riskFactors: [],
+            recommendations: []
+        };
 
-        const lines = text.split('\n');
+        // Extract financial health score
+        const scoreMatch = text.match(/(?:financial\s+health\s+score|score)[:\s]*(\d+(?:\.\d+)?)\s*(?:\/\s*10|out\s+of\s+10)/i);
+        if (scoreMatch) {
+            result.financialHealthScore = parseFloat(scoreMatch[1]);
+        }
 
-        for (const line of lines) {
-            // Check for section headers (markdown style)
-            if (line.startsWith('**') && line.endsWith('**')) {
-                // Save previous section
-                if (currentSection && currentContent) {
-                    sections[currentSection] = currentContent.trim();
-                }
+        // Extract priority actions more reliably
+        const actionMatches = text.match(/top\s+3?\s+priority\s+actions?[:\s]*([\s\S]*?)(?=###|$)/i);
+        if (actionMatches) {
+            const actionsText = actionMatches[1];
+            const actions = actionsText.match(/\d+\.\s*\*\*([^*]+)\*\*/g);
 
-                // Start new section
-                currentSection = line.replace(/\*\*/g, '').toLowerCase();
-                currentContent = '';
-            } else if (line.startsWith('### **') && line.endsWith('**')) {
-                // Save previous section
-                if (currentSection && currentContent) {
-                    sections[currentSection] = currentContent.trim();
-                }
-
-                // Start new section
-                currentSection = line.replace(/### \*\*/g, '').replace(/\*\*/g, '').toLowerCase();
-                currentContent = '';
-            } else if (line.trim()) {
-                currentContent += line + '\n';
+            if (actions) {
+                result.priorityActions = actions.map(action => {
+                    return action.replace(/^\d+\.\s*\*\*/, '').replace(/\*\*$/, '').replace(/:$/, '').trim();
+                }).slice(0, 3);
             }
         }
 
-        // Save last section
-        if (currentSection && currentContent) {
-            sections[currentSection] = currentContent.trim();
-        }
-
-        return sections;
-    };
-
-    /**
-     * Extract financial health score from text
-     */
-    const extractHealthScore = (text) => {
-        const scoreMatch = text.match(/(?:score|health).*?(\d+)(?:\/10|\s*out\s*of\s*10)/i);
-        return scoreMatch ? parseInt(scoreMatch[1]) : null;
-    };
-
-    /**
-     * Extract priority actions from text
-     */
-    const extractPriorityActions = (text) => {
-        const actions = [];
-        const actionMatches = text.match(/\d+\.\s*\*\*([^*]+)\*\*:?\s*([^]*?)(?=\d+\.\s*\*\*|$)/g);
-
-        if (actionMatches) {
-            actionMatches.forEach(match => {
-                const cleanMatch = match.replace(/\d+\.\s*\*\*/, '').replace(/\*\*/g, '');
-                const parts = cleanMatch.split(':');
-                actions.push(parts[0].trim());
-            });
-        }
-
-        return actions.slice(0, 3); // Top 3 only
+        return result;
     };
 
     /**
@@ -217,16 +352,9 @@ const FinancialInsights = ({
                 await cacheInsights(result);
             }
 
-            // Parse the insights for better display
-            const parsedSections = parseInsightsText(result.insights);
-            const healthScore = extractHealthScore(result.insights);
-            const priorityActions = extractPriorityActions(result.insights);
-
-            result.structuredInsights = {
-                financialHealthScore: healthScore,
-                priorityActions: priorityActions,
-                sections: parsedSections
-            };
+            // Parse the insights for better display using enhanced parsing
+            const structuredInsights = parseStructuredInsights(result.insights);
+            result.structuredInsights = structuredInsights;
 
             setInsights(result);
         } catch (error) {
@@ -277,52 +405,6 @@ const FinancialInsights = ({
         if (score >= 6) return 'text-yellow-600';
         if (score >= 4) return 'text-orange-600';
         return 'text-red-600';
-    };
-
-    /**
-     * Format text content with better styling
-     */
-    const formatTextContent = (text) => {
-        if (!text) return null;
-
-        return text.split('\n').map((line, index) => {
-            // Handle bullet points
-            if (line.trim().startsWith('-')) {
-                return (
-                    <li key={index} className="ml-4 text-gray-700">
-                        {line.replace(/^-\s*/, '')}
-                    </li>
-                );
-            }
-
-            // Handle numbered items
-            if (/^\d+\./.test(line.trim())) {
-                return (
-                    <li key={index} className="ml-4 text-gray-700 font-medium">
-                        {line.replace(/^\d+\.\s*/, '')}
-                    </li>
-                );
-            }
-
-            // Handle bold text
-            if (line.includes('**')) {
-                const formattedLine = line.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-                return (
-                    <p key={index} className="text-gray-800 mb-2" dangerouslySetInnerHTML={{ __html: formattedLine }} />
-                );
-            }
-
-            // Regular text
-            if (line.trim()) {
-                return (
-                    <p key={index} className="text-gray-700 mb-2">
-                        {line}
-                    </p>
-                );
-            }
-
-            return <br key={index} />;
-        });
     };
 
     return (
@@ -524,6 +606,8 @@ const FinancialInsights = ({
                             </div>
                         </Card>
                     )}
+
+                    {/* Detailed Analysis with Enhanced Formatting */}
                     <Card
                         title="Detailed Analysis"
                         headerActions={
@@ -546,9 +630,8 @@ const FinancialInsights = ({
                         }
                     >
                         <div className="prose max-w-none">
-                            <div className="text-gray-800 leading-relaxed">
-                                {formatTextContent(insights.insights)}
-                            </div>
+                            {/* Use the enhanced formatting function */}
+                            {formatInsightsContent(insights.insights)}
                         </div>
 
                         {/* Metadata */}
