@@ -21,11 +21,12 @@ import { CreditCardService } from '../services/CreditCardService';
  * Credit Card Manager Component
  * Handles credit card tracking with payment reminders and balances
  */
-const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
+const CreditCardManager = ({ creditCards = [], onSave, onDelete, onUpdate, userId }) => {
     const [showAddForm, setShowAddForm] = useState(false);
     const [editingCard, setEditingCard] = useState(null);
     const [showBalances, setShowBalances] = useState({});
     const [selectedCard, setSelectedCard] = useState(null);
+    const [saving, setSaving] = useState(false);
 
     const [formData, setFormData] = useState({
         name: '',
@@ -44,6 +45,38 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
     });
 
     const [formErrors, setFormErrors] = useState({});
+
+    /**
+     * Default implementations if props are not provided
+     */
+    const handleSave = async (cardData) => {
+        if (onSave && typeof onSave === 'function') {
+            return await onSave(cardData);
+        } else if (userId) {
+            // Fallback to direct service call if userId is provided
+            return await CreditCardService.saveCreditCard(userId, cardData);
+        } else {
+            throw new Error('No save handler provided and no userId available');
+        }
+    };
+
+    const handleUpdate = async (cardId, cardData) => {
+        if (onUpdate && typeof onUpdate === 'function') {
+            return await onUpdate(cardId, cardData);
+        } else {
+            // Fallback to direct service call
+            return await CreditCardService.updateCreditCard(cardId, cardData);
+        }
+    };
+
+    const handleDelete = async (cardId) => {
+        if (onDelete && typeof onDelete === 'function') {
+            return await onDelete(cardId);
+        } else {
+            // Fallback to direct service call
+            return await CreditCardService.deleteCreditCard(cardId);
+        }
+    };
 
     /**
      * Calculate days until due date
@@ -162,6 +195,7 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
             return;
         }
 
+        setSaving(true);
         try {
             const cardData = {
                 ...formData,
@@ -173,10 +207,10 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
             };
 
             if (editingCard) {
-                await onUpdate(editingCard.id, cardData);
+                await handleUpdate(editingCard.id, cardData);
                 setEditingCard(null);
             } else {
-                await onSave(cardData);
+                await handleSave(cardData);
             }
 
             // Reset form
@@ -185,6 +219,8 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
         } catch (error) {
             console.error('Error saving credit card:', error);
             alert('Failed to save credit card. Please try again.');
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -280,10 +316,25 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
                 lastPaidAmount: amount
             };
 
-            await onUpdate(card.id, updatedCard);
+            await handleUpdate(card.id, updatedCard);
         } catch (error) {
             console.error('Error recording payment:', error);
             alert('Failed to record payment. Please try again.');
+        }
+    };
+
+    /**
+     * Handle card deletion with confirmation
+     * @param {string} cardId - Card ID to delete
+     */
+    const confirmDelete = async (cardId) => {
+        if (window.confirm('Are you sure you want to delete this credit card?')) {
+            try {
+                await handleDelete(cardId);
+            } catch (error) {
+                console.error('Error deleting card:', error);
+                alert('Failed to delete credit card. Please try again.');
+            }
         }
     };
 
@@ -448,7 +499,7 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
                                         <Button
                                             variant="outline"
                                             size="sm"
-                                            onClick={() => onDelete(card.id)}
+                                            onClick={() => confirmDelete(card.id)}
                                             icon={<Trash2 className="w-3 h-3" />}
                                             className="text-red-600 border-red-300 hover:bg-red-50"
                                             title="Delete card"
@@ -760,14 +811,23 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
                                             resetForm();
                                         }}
                                         className="flex-1"
+                                        disabled={saving}
                                     >
                                         Cancel
                                     </Button>
                                     <Button
                                         type="submit"
                                         className="flex-1 bg-indigo-600 hover:bg-indigo-700"
+                                        disabled={saving}
                                     >
-                                        {editingCard ? 'Update Card' : 'Add Card'}
+                                        {saving ? (
+                                            <>
+                                                <LoadingSpinner className="w-4 h-4 mr-2" />
+                                                {editingCard ? 'Updating...' : 'Adding...'}
+                                            </>
+                                        ) : (
+                                            editingCard ? 'Update Card' : 'Add Card'
+                                        )}
                                     </Button>
                                 </div>
                             </form>
