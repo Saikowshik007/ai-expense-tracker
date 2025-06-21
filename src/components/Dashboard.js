@@ -22,7 +22,15 @@ import FinancialInsights from './FinancialInsights';
  * Enhanced Dashboard Component with AI Integration
  * Displays financial overview with AI-powered insights and recommendations
  */
-const Dashboard = ({ taxCalculations, expenses, creditCards = [], user }) => {
+const Dashboard = ({
+                       taxCalculations,
+                       expenses,
+                       creditCards = [],
+                       user,
+                       paycheckData,  // Add this parameter
+                       hasApiKey,
+                       onNavigateToApiSettings
+                   }) => {
     // Use the financial insights hook
     const {
         insights,
@@ -520,12 +528,13 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [], user }) => {
 
             {/* Financial Insights Component */}
             <FinancialInsights
-                paycheckData={{ state: 'Unknown' }} // You might want to pass actual paycheck data
+                user={user}
+                paycheckData={paycheckData}
                 expenses={expenses}
                 creditCards={creditCards}
                 taxCalculations={taxCalculations}
-                userSettings={settings}
-                onSaveSettings={saveSettings}
+                hasApiKey={hasApiKey}
+                onNavigateToSettings={onNavigateToApiSettings}
             />
 
             {/* Credit Card Recommendations */}

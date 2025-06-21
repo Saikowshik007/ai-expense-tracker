@@ -19,18 +19,18 @@ export class ChatGPTFinancialService {
      * @param {Object} params.taxCalculations - Tax calculations
      * @returns {Object} Structured financial data for ChatGPT
      */
-    static prepareFinancialData({ paycheckData, expenses, creditCards, taxCalculations }) {
+    static prepareFinancialData({paycheckData, expenses, creditCards, taxCalculations}) {
         // Calculate expense metrics
-        const totalExpenses = ExpenseCalculatorService.calculateTotalExpenses(expenses);
-        const expensesByCategory = ExpenseCalculatorService.getExpensesByCategory(expenses);
-        const expensesByType = ExpenseCalculatorService.getExpensesByType(expenses);
+        const totalExpenses = ExpenseCalculatorService.calculateTotalExpenses(expenses || []);
+        const expensesByCategory = ExpenseCalculatorService.getExpensesByCategory(expenses || []);
+        const expensesByType = ExpenseCalculatorService.getExpensesByType(expenses || []);
         const savingsInfo = taxCalculations ?
             ExpenseCalculatorService.calculateSavingsRate(taxCalculations.monthlyNet, totalExpenses) :
             null;
 
         // Calculate credit card metrics
-        const creditCardSummary = CreditCardService.generateSummary(creditCards);
-        const debtRatios = CreditCardService.calculateDebtRatios(creditCards);
+        const creditCardSummary = CreditCardService.generateSummary(creditCards || []);
+        const debtRatios = CreditCardService.calculateDebtRatios(creditCards || []);
 
         // Prepare anonymized data for ChatGPT
         const financialSnapshot = {
@@ -45,10 +45,10 @@ export class ChatGPTFinancialService {
                 total: totalExpenses,
                 categories: expensesByCategory,
                 types: expensesByType,
-                monthlyTrends: ExpenseCalculatorService.calculateExpenseTrends(expenses, 6)
+                monthlyTrends: ExpenseCalculatorService.calculateExpenseTrends(expenses || [], 6)
             },
             creditCards: {
-                cardCount: creditCards.length,
+                cardCount: (creditCards || []).length,
                 totalDebt: debtRatios.totalDebt,
                 totalCreditLimit: debtRatios.totalCredit,
                 utilization: debtRatios.utilization,
@@ -56,7 +56,7 @@ export class ChatGPTFinancialService {
                 monthlyInterest: creditCardSummary.monthlyInterest,
                 cardsDueSoon: creditCardSummary.cardsDueSoon.length,
                 overdueCards: creditCardSummary.overdueCards.length,
-                averageInterestRate: this.calculateAverageInterestRate(creditCards)
+                averageInterestRate: this.calculateAverageInterestRate(creditCards || [])
             },
             savings: savingsInfo || {
                 monthlySavings: 0,
@@ -79,7 +79,7 @@ export class ChatGPTFinancialService {
      * @returns {number} Average interest rate
      */
     static calculateAverageInterestRate(creditCards) {
-        if (!creditCards.length) return 0;
+        if (!creditCards || !creditCards.length) return 0;
 
         const totalWeightedRate = creditCards.reduce((sum, card) => {
             const balance = parseFloat(card.currentBalance) || 0;
@@ -145,13 +145,18 @@ Please provide concrete, actionable advice with specific dollar amounts and time
     }
 
     /**
-     * Get user's API key from Firebase
+     * Get user's API key from Firebase with proper error handling
      * @param {string} userId - User ID
      * @param {string} label - API key label (default: 'Default')
      * @returns {Promise<string>} API key
      */
     static async getUserApiKey(userId, label = 'Default') {
         try {
+            // Validate userId first
+            if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+                throw new Error('Valid user ID is required to retrieve API key');
+            }
+
             const apiKey = await FirebaseService.getApiKey(userId, label);
             if (!apiKey) {
                 throw new Error('No API key found. Please add an OpenAI API key in your settings.');
@@ -338,11 +343,24 @@ Please provide concrete, actionable advice with specific dollar amounts and time
      * @param {Object} params.taxCalculations - Tax calculations
      * @param {string} params.focusArea - Optional focus area
      * @param {string} params.apiKeyLabel - API key label to use (default: 'Default')
-     * @param {number} params.retries - Number of retries (default: 2)
+     * @param {number} retries - Number of retries (default: 2)
      * @returns {Promise<Object>} Structured insights
      */
     static async getFinancialInsightsWithRetry(params, retries = 2) {
-        const { userId, paycheckData, expenses, creditCards, taxCalculations, focusArea, apiKeyLabel = 'Default' } = params;
+        const {
+            userId,
+            paycheckData,
+            expenses,
+            creditCards,
+            taxCalculations,
+            focusArea,
+            apiKeyLabel = 'Default'
+        } = params;
+
+        // Validate userId first
+        if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+            throw new Error('Valid user ID is required for financial insights');
+        }
 
         // Prepare financial data
         const financialData = this.prepareFinancialData({
@@ -387,11 +405,11 @@ Please provide concrete, actionable advice with specific dollar amounts and time
      * @param {Array} params.creditCards - Credit cards
      * @param {Object} params.taxCalculations - Tax calculations
      * @param {string} params.focusArea - Optional focus area
-     * @param {number} params.retries - Number of retries (default: 2)
+     * @param {number} retries - Number of retries (default: 2)
      * @returns {Promise<Object>} Structured insights
      */
     static async getFinancialInsightsWithApiKeyAndRetry(params, retries = 2) {
-        const { apiKey, paycheckData, expenses, creditCards, taxCalculations, focusArea } = params;
+        const {apiKey, paycheckData, expenses, creditCards, taxCalculations, focusArea} = params;
 
         // Prepare financial data
         const financialData = this.prepareFinancialData({
@@ -435,6 +453,10 @@ Please provide concrete, actionable advice with specific dollar amounts and time
      */
     static async hasValidApiKey(userId, apiKeyLabel = 'Default') {
         try {
+            if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+                return false;
+            }
+
             const apiKey = await FirebaseService.getApiKey(userId, apiKeyLabel);
             return !!apiKey;
         } catch (error) {
@@ -475,7 +497,7 @@ Please provide concrete, actionable advice with specific dollar amounts and time
                 debtStrategy: 'Focus on highest interest rate cards first',
                 savingsGoals: 'Aim for 20% savings rate within 12 months'
             },
-            usage: { total_tokens: 0 },
+            usage: {total_tokens: 0},
             timestamp: new Date().toISOString(),
             financialData: financialData,
             isSample: true

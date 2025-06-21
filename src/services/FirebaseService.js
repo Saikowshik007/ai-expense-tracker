@@ -20,6 +20,91 @@ import { db } from '../firebase';
  */
 export class FirebaseService {
     /**
+     * Validate user ID before making queries
+     * @param {string} userId - User ID to validate
+     * @throws {Error} If user ID is invalid
+     */
+    static validateUserId(userId) {
+        if (!userId || typeof userId !== 'string' || userId.trim() === '') {
+            throw new Error('Valid user ID is required');
+        }
+    }
+
+    /**
+     * Clean object of undefined values for Firebase
+     * Firebase doesn't allow undefined values in documents
+     * @param {object} obj - Object to clean
+     * @returns {object} Clean object without undefined values
+     */
+    static cleanUndefinedValues(obj) {
+        if (obj === null || obj === undefined) {
+            return {};
+        }
+
+        if (typeof obj !== 'object' || obj instanceof Date || Array.isArray(obj)) {
+            return obj;
+        }
+
+        const cleaned = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined) {
+                if (value && typeof value === 'object' && value.constructor === Object) {
+                    // Recursively clean nested objects
+                    const cleanedNested = this.cleanUndefinedValues(value);
+                    if (Object.keys(cleanedNested).length > 0) {
+                        cleaned[key] = cleanedNested;
+                    }
+                } else {
+                    cleaned[key] = value;
+                }
+            }
+        }
+        return cleaned;
+    }
+
+    /**
+     * Deep clean and validate data before saving to Firebase
+     * @param {object} data - Data to clean and validate
+     * @returns {object} Clean data safe for Firebase
+     */
+    static deepCleanForFirebase(data) {
+        // First pass: remove undefined values
+        let cleaned = this.cleanUndefinedValues(data);
+
+        // Second pass: ensure all values are valid for Firebase
+        const validateValue = (value) => {
+            if (value === undefined) {
+                return null; // Convert undefined to null
+            }
+            if (value === '') {
+                return null; // Convert empty strings to null if desired, or keep as ''
+            }
+            if (typeof value === 'object' && value !== null && !(value instanceof Date) && !Array.isArray(value)) {
+                // Recursively clean nested objects
+                const nestedCleaned = {};
+                for (const [key, val] of Object.entries(value)) {
+                    const cleanedVal = validateValue(val);
+                    if (cleanedVal !== undefined) {
+                        nestedCleaned[key] = cleanedVal;
+                    }
+                }
+                return Object.keys(nestedCleaned).length > 0 ? nestedCleaned : null;
+            }
+            return value;
+        };
+
+        const finalCleaned = {};
+        for (const [key, value] of Object.entries(cleaned)) {
+            const cleanedValue = validateValue(value);
+            if (cleanedValue !== undefined) {
+                finalCleaned[key] = cleanedValue;
+            }
+        }
+
+        return finalCleaned;
+    }
+
+    /**
      * Create or update a document in a collection
      * @param {string} collectionName - Firestore collection name
      * @param {string} userId - User ID for data isolation
@@ -29,24 +114,47 @@ export class FirebaseService {
      */
     static async saveOrUpdateDocument(collectionName, userId, data, existingDocId = null) {
         try {
+            this.validateUserId(userId);
+
+            // Deep clean the data to ensure no undefined values
+            const cleanData = this.deepCleanForFirebase(data);
+
+            // Ensure essential fields are present
             const docData = {
-                ...data,
+                ...cleanData,
                 userId,
                 updatedAt: new Date()
             };
 
+            // Final safety check - remove any undefined values that might have slipped through
+            const safeDocData = {};
+            for (const [key, value] of Object.entries(docData)) {
+                if (value !== undefined) {
+                    safeDocData[key] = value;
+                }
+            }
+
             if (existingDocId) {
-                await updateDoc(doc(db, collectionName, existingDocId), docData);
+                await updateDoc(doc(db, collectionName, existingDocId), safeDocData);
                 return existingDocId;
             } else {
                 const docRef = await addDoc(collection(db, collectionName), {
-                    ...docData,
+                    ...safeDocData,
                     createdAt: new Date()
                 });
                 return docRef.id;
             }
         } catch (error) {
             console.error(`Error saving/updating document in ${collectionName}:`, error);
+
+            // Log more details for debugging
+            console.error('Data that failed to save:', {
+                collectionName,
+                userId,
+                data,
+                existingDocId
+            });
+
             throw new Error(`Failed to save data: ${error.message}`);
         }
     }
@@ -68,6 +176,8 @@ export class FirebaseService {
         limitCount = null
     ) {
         try {
+            this.validateUserId(userId);
+
             let q = query(collection(db, collectionName), where('userId', '==', userId));
 
             if (orderByField) {
@@ -79,14 +189,17 @@ export class FirebaseService {
             }
 
             const snapshot = await getDocs(q);
-            return snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                // Convert Firestore timestamps to JavaScript dates
-                createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-                updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
-                date: doc.data().date?.toDate?.() || doc.data().date
-            }));
+            return snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    // Convert Firestore timestamps to JavaScript dates
+                    createdAt: data.createdAt?.toDate?.() || data.createdAt,
+                    updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+                    date: data.date?.toDate?.() || data.date
+                };
+            });
         } catch (error) {
             console.error(`Error fetching documents from ${collectionName}:`, error);
             throw new Error(`Failed to fetch data: ${error.message}`);
@@ -101,6 +214,10 @@ export class FirebaseService {
      */
     static async getDocumentById(collectionName, docId) {
         try {
+            if (!docId || typeof docId !== 'string') {
+                throw new Error('Valid document ID is required');
+            }
+
             const docRef = doc(db, collectionName, docId);
             const docSnap = await getDoc(docRef);
 
@@ -129,6 +246,10 @@ export class FirebaseService {
      */
     static async deleteDocument(collectionName, docId) {
         try {
+            if (!docId || typeof docId !== 'string') {
+                throw new Error('Valid document ID is required');
+            }
+
             await deleteDoc(doc(db, collectionName, docId));
         } catch (error) {
             console.error(`Error deleting document ${docId} from ${collectionName}:`, error);
@@ -147,6 +268,8 @@ export class FirebaseService {
      */
     static async getPaginatedDocuments(collectionName, userId, orderByField, limitCount, lastDoc = null) {
         try {
+            this.validateUserId(userId);
+
             let q = query(
                 collection(db, collectionName),
                 where('userId', '==', userId),
@@ -159,13 +282,16 @@ export class FirebaseService {
             }
 
             const snapshot = await getDocs(q);
-            const documents = snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-                updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
-                date: doc.data().date?.toDate?.() || doc.data().date
-            }));
+            const documents = snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate?.() || data.createdAt,
+                    updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+                    date: data.date?.toDate?.() || data.date
+                };
+            });
 
             return {
                 documents,
@@ -189,6 +315,8 @@ export class FirebaseService {
      */
     static async getDocumentsByDateRange(collectionName, userId, startDate, endDate, dateField = 'date') {
         try {
+            this.validateUserId(userId);
+
             const q = query(
                 collection(db, collectionName),
                 where('userId', '==', userId),
@@ -198,13 +326,16 @@ export class FirebaseService {
             );
 
             const snapshot = await getDocs(q);
-            return snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-                updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
-                date: doc.data().date?.toDate?.() || doc.data().date
-            }));
+            return snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate?.() || data.createdAt,
+                    updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+                    date: data.date?.toDate?.() || data.date
+                };
+            });
         } catch (error) {
             console.error(`Error fetching documents by date range from ${collectionName}:`, error);
             throw new Error(`Failed to fetch data by date range: ${error.message}`);
@@ -219,6 +350,10 @@ export class FirebaseService {
      */
     static async batchDeleteDocuments(collectionName, docIds) {
         try {
+            if (!Array.isArray(docIds) || docIds.length === 0) {
+                throw new Error('Valid array of document IDs is required');
+            }
+
             const deletePromises = docIds.map(docId =>
                 this.deleteDocument(collectionName, docId)
             );
@@ -239,6 +374,8 @@ export class FirebaseService {
      */
     static async searchDocuments(collectionName, userId, fieldName, searchValue) {
         try {
+            this.validateUserId(userId);
+
             const q = query(
                 collection(db, collectionName),
                 where('userId', '==', userId),
@@ -246,13 +383,16 @@ export class FirebaseService {
             );
 
             const snapshot = await getDocs(q);
-            return snapshot.docs.map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
-                updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
-                date: doc.data().date?.toDate?.() || doc.data().date
-            }));
+            return snapshot.docs.map(doc => {
+                const data = doc.data();
+                return {
+                    id: doc.id,
+                    ...data,
+                    createdAt: data.createdAt?.toDate?.() || data.createdAt,
+                    updatedAt: data.updatedAt?.toDate?.() || data.updatedAt,
+                    date: data.date?.toDate?.() || data.date
+                };
+            });
         } catch (error) {
             console.error(`Error searching documents in ${collectionName}:`, error);
             throw new Error(`Failed to search documents: ${error.message}`);
@@ -264,6 +404,15 @@ export class FirebaseService {
     // ============================================
 
     /**
+     * Validate OpenAI API key format
+     * @param {string} apiKey - API key to validate
+     * @returns {boolean} True if format is valid
+     */
+    static validateOpenAIApiKey(apiKey) {
+        return typeof apiKey === 'string' && apiKey.startsWith('sk-') && apiKey.length > 20;
+    }
+
+    /**
      * Simple encryption for API keys (client-side)
      * Note: This is basic obfuscation, not true encryption
      * For production, consider server-side encryption
@@ -272,12 +421,17 @@ export class FirebaseService {
      * @returns {string} Encrypted text
      */
     static simpleEncrypt(text, key) {
-        let result = '';
-        for (let i = 0; i < text.length; i++) {
-            const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
-            result += String.fromCharCode(charCode);
+        try {
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+                result += String.fromCharCode(charCode);
+            }
+            return btoa(result); // Base64 encode
+        } catch (error) {
+            console.error('Error encrypting API key:', error);
+            throw new Error('Failed to encrypt API key');
         }
-        return btoa(result); // Base64 encode
     }
 
     /**
@@ -310,20 +464,26 @@ export class FirebaseService {
      */
     static async saveApiKey(userId, apiKey, label = 'Default') {
         try {
-            if (!apiKey || !apiKey.startsWith('sk-')) {
+            this.validateUserId(userId);
+
+            if (!this.validateOpenAIApiKey(apiKey)) {
                 throw new Error('Invalid OpenAI API key format');
             }
 
-            // Check if user already has an API key
+            // Check if user already has an API key with this label
             const existingKeys = await this.getUserDocuments('apiKeys', userId);
             const existingKey = existingKeys.find(key => key.label === label);
 
             // Encrypt the API key using user ID as the key
             const encryptedKey = this.simpleEncrypt(apiKey, userId);
 
+            // Create masked version for display
+            const maskedKey = `${apiKey.substring(0, 7)}${'•'.repeat(apiKey.length - 11)}${apiKey.substring(apiKey.length - 4)}`;
+
             const keyData = {
                 encryptedKey,
-                label,
+                maskedKey,
+                label: label || 'Default',
                 keyType: 'openai',
                 isActive: true,
                 lastUsed: null,
@@ -352,6 +512,8 @@ export class FirebaseService {
      */
     static async getApiKey(userId, label = 'Default') {
         try {
+            this.validateUserId(userId);
+
             const apiKeys = await this.getUserDocuments('apiKeys', userId);
             const keyDoc = apiKeys.find(key => key.label === label && key.isActive);
 
@@ -362,8 +524,10 @@ export class FirebaseService {
             // Decrypt the API key
             const decryptedKey = this.simpleDecrypt(keyDoc.encryptedKey, userId);
 
-            // Update last used timestamp
-            await this.updateApiKeyUsage(keyDoc.id);
+            // Update last used timestamp (async, don't wait for it)
+            this.updateApiKeyUsage(keyDoc.id).catch(error => {
+                console.warn('Failed to update API key usage:', error);
+            });
 
             return decryptedKey;
         } catch (error) {
@@ -379,6 +543,8 @@ export class FirebaseService {
      */
     static async getUserApiKeys(userId) {
         try {
+            this.validateUserId(userId);
+
             const apiKeys = await this.getUserDocuments('apiKeys', userId, 'createdAt', 'desc');
 
             // Return keys without the encrypted data for security
@@ -391,8 +557,8 @@ export class FirebaseService {
                 usageCount: key.usageCount,
                 createdAt: key.createdAt,
                 updatedAt: key.updatedAt,
-                // Mask the key for display
-                maskedKey: key.encryptedKey ? '••••••••••••••••' + (key.label || 'sk-') : ''
+                // Use stored masked key or create a default one
+                maskedKey: key.maskedKey || '••••••••••••••••'
             }));
         } catch (error) {
             console.error('Error fetching user API keys:', error);
@@ -407,13 +573,19 @@ export class FirebaseService {
      */
     static async updateApiKeyUsage(keyDocId) {
         try {
+            if (!keyDocId || typeof keyDocId !== 'string') {
+                throw new Error('Valid key document ID is required');
+            }
+
             const keyDoc = await this.getDocumentById('apiKeys', keyDocId);
             if (keyDoc) {
-                await updateDoc(doc(db, 'apiKeys', keyDocId), {
+                const updateData = {
                     lastUsed: new Date(),
                     usageCount: (keyDoc.usageCount || 0) + 1,
                     updatedAt: new Date()
-                });
+                };
+
+                await updateDoc(doc(db, 'apiKeys', keyDocId), updateData);
             }
         } catch (error) {
             console.error('Error updating API key usage:', error);
@@ -428,6 +600,10 @@ export class FirebaseService {
      */
     static async deleteApiKey(keyDocId) {
         try {
+            if (!keyDocId || typeof keyDocId !== 'string') {
+                throw new Error('Valid key document ID is required');
+            }
+
             await this.deleteDocument('apiKeys', keyDocId);
         } catch (error) {
             console.error('Error deleting API key:', error);
@@ -442,10 +618,16 @@ export class FirebaseService {
      */
     static async deactivateApiKey(keyDocId) {
         try {
-            await updateDoc(doc(db, 'apiKeys', keyDocId), {
+            if (!keyDocId || typeof keyDocId !== 'string') {
+                throw new Error('Valid key document ID is required');
+            }
+
+            const updateData = {
                 isActive: false,
                 updatedAt: new Date()
-            });
+            };
+
+            await updateDoc(doc(db, 'apiKeys', keyDocId), updateData);
         } catch (error) {
             console.error('Error deactivating API key:', error);
             throw new Error(`Failed to deactivate API key: ${error.message}`);
@@ -459,6 +641,10 @@ export class FirebaseService {
      */
     static async testApiKey(apiKey) {
         try {
+            if (!this.validateOpenAIApiKey(apiKey)) {
+                return false;
+            }
+
             const response = await fetch('https://api.openai.com/v1/models', {
                 headers: {
                     'Authorization': `Bearer ${apiKey}`,

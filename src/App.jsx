@@ -189,6 +189,9 @@ const App = () => {
                                         expenses={expenses}
                                         creditCards={creditCards || []}
                                         user={user}
+                                        paycheckData={paycheckData}  // Add this line - pass paycheckData from useUserData
+                                        hasApiKey={hasApiKey}
+                                        onNavigateToApiSettings={() => setActiveTab('settings')}
                                     />
                                 )}
 

@@ -18,29 +18,74 @@ export const useFinancialInsights = (user) => {
     });
 
     /**
+     * Validate user object
+     * @param {object} user - User object to validate
+     * @returns {boolean} True if user is valid
+     */
+    const isValidUser = useCallback((user) => {
+        return user && user.uid && typeof user.uid === 'string' && user.uid.trim() !== '';
+    }, []);
+
+    /**
+     * Clean object of undefined values for Firebase
+     * @param {object} obj - Object to clean
+     * @returns {object} Clean object without undefined values
+     */
+    const cleanUndefinedValues = useCallback((obj) => {
+        if (obj === null || obj === undefined) {
+            return {};
+        }
+
+        if (typeof obj !== 'object' || obj instanceof Date || Array.isArray(obj)) {
+            return obj;
+        }
+
+        const cleaned = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined) {
+                if (value && typeof value === 'object' && value.constructor === Object) {
+                    // Recursively clean nested objects
+                    const cleanedNested = cleanUndefinedValues(value);
+                    if (Object.keys(cleanedNested).length > 0) {
+                        cleaned[key] = cleanedNested;
+                    }
+                } else {
+                    cleaned[key] = value;
+                }
+            }
+        }
+        return cleaned;
+    }, []);
+
+    /**
      * Load user settings from Firebase
      */
     const loadSettings = useCallback(async () => {
-        if (!user?.uid) return;
+        if (!isValidUser(user)) {
+            console.warn('Invalid user, skipping settings load');
+            return;
+        }
 
         try {
             const userSettings = await FirebaseService.getUserDocuments('userSettings', user.uid);
             if (userSettings.length > 0) {
+                // Clean undefined values from loaded settings
+                const cleanedSettings = cleanUndefinedValues(userSettings[0]);
                 setSettings(prev => ({
                     ...prev,
-                    ...userSettings[0]
+                    ...cleanedSettings
                 }));
             }
         } catch (error) {
             console.error('Error loading insights settings:', error);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser, cleanUndefinedValues]);
 
     /**
      * Save user settings to Firebase
      */
     const saveSettings = useCallback(async (newSettings) => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -48,33 +93,55 @@ export const useFinancialInsights = (user) => {
             // Get existing settings to preserve other user preferences
             const existingSettings = await FirebaseService.getUserDocuments('userSettings', user.uid);
             const existingId = existingSettings.length > 0 ? existingSettings[0].id : null;
+            const existingData = existingSettings.length > 0 ? existingSettings[0] : {};
+
+            // Clean existing data of undefined values
+            const cleanExistingData = cleanUndefinedValues(existingData);
 
             const updatedSettings = {
+                ...cleanExistingData,
                 ...settings,
                 ...newSettings,
+                updatedAt: new Date()
+            };
+
+            // Clean the final settings object - this is crucial!
+            const cleanUpdatedSettings = cleanUndefinedValues(updatedSettings);
+
+            // Ensure no undefined values slip through
+            const safeSettings = {
+                ...cleanUpdatedSettings,
+                // Explicitly handle potentially undefined fields
+                openaiApiKey: cleanUpdatedSettings.openaiApiKey || '',
+                autoAnalyze: cleanUpdatedSettings.autoAnalyze || false,
+                includeGoals: cleanUpdatedSettings.includeGoals !== undefined ? cleanUpdatedSettings.includeGoals : true,
+                lastAnalysisDate: cleanUpdatedSettings.lastAnalysisDate || null,
                 updatedAt: new Date()
             };
 
             await FirebaseService.saveOrUpdateDocument(
                 'userSettings',
                 user.uid,
-                updatedSettings,
+                safeSettings,
                 existingId
             );
 
-            setSettings(updatedSettings);
-            return updatedSettings;
+            setSettings(safeSettings);
+            return safeSettings;
         } catch (error) {
             console.error('Error saving insights settings:', error);
             throw error;
         }
-    }, [user?.uid, settings]);
+    }, [user, settings, isValidUser, cleanUndefinedValues]);
 
     /**
      * Load cached insights from Firebase
      */
     const loadCachedInsights = useCallback(async () => {
-        if (!user?.uid) return;
+        if (!isValidUser(user)) {
+            console.warn('Invalid user, skipping cached insights load');
+            return;
+        }
 
         try {
             const cachedInsights = await FirebaseService.getUserDocuments(
@@ -98,28 +165,40 @@ export const useFinancialInsights = (user) => {
         } catch (error) {
             console.error('Error loading cached insights:', error);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Save insights to Firebase for caching
      */
     const cacheInsights = useCallback(async (insightsData) => {
-        if (!user?.uid) return;
+        if (!isValidUser(user)) {
+            console.warn('Invalid user, skipping insights caching');
+            return;
+        }
 
         try {
+            // Clean the insights data before saving
+            const cleanInsightsData = cleanUndefinedValues(insightsData);
+
+            // Ensure required fields are present
+            const safeInsightsData = {
+                ...cleanInsightsData,
+                cachedAt: new Date(),
+                timestamp: cleanInsightsData.timestamp || new Date().toISOString(),
+                insights: cleanInsightsData.insights || '',
+                success: cleanInsightsData.success !== undefined ? cleanInsightsData.success : true
+            };
+
             await FirebaseService.saveOrUpdateDocument(
                 'financialInsights',
                 user.uid,
-                {
-                    ...insightsData,
-                    cachedAt: new Date()
-                }
+                safeInsightsData
             );
         } catch (error) {
             console.error('Error caching insights:', error);
             // Don't throw - caching failure shouldn't break the feature
         }
-    }, [user?.uid]);
+    }, [user, isValidUser, cleanUndefinedValues]);
 
     /**
      * Get financial insights with caching
@@ -152,7 +231,7 @@ export const useFinancialInsights = (user) => {
                 }
             }
 
-            if (useSample || !settings.openaiApiKey) {
+            if (useSample || !settings.openaiApiKey || !isValidUser(user)) {
                 // Use sample insights
                 const financialData = ChatGPTFinancialService.prepareFinancialData({
                     paycheckData,
@@ -162,9 +241,9 @@ export const useFinancialInsights = (user) => {
                 });
                 result = ChatGPTFinancialService.generateSampleInsights(financialData);
             } else {
-                // Use real ChatGPT API
+                // Use real ChatGPT API with user ID
                 result = await ChatGPTFinancialService.getFinancialInsightsWithRetry({
-                    apiKey: settings.openaiApiKey,
+                    userId: user.uid,
                     paycheckData,
                     expenses,
                     creditCards,
@@ -178,9 +257,10 @@ export const useFinancialInsights = (user) => {
 
             setInsights(result);
 
-            // Update last analysis date in settings
-            if (settings.openaiApiKey) {
-                await saveSettings({ lastAnalysisDate: new Date().toISOString() });
+            // Update last analysis date in settings - with proper date handling
+            if (settings.openaiApiKey && isValidUser(user)) {
+                const currentDate = new Date().toISOString();
+                await saveSettings({ lastAnalysisDate: currentDate });
             }
 
             return result;
@@ -191,13 +271,13 @@ export const useFinancialInsights = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [insights, settings.openaiApiKey, cacheInsights, saveSettings]);
+    }, [insights, settings.openaiApiKey, cacheInsights, saveSettings, user, isValidUser]);
 
     /**
      * Auto-analyze when data changes (if enabled)
      */
     const autoAnalyze = useCallback(async (financialData) => {
-        if (!settings.autoAnalyze || !settings.openaiApiKey || loading) {
+        if (!settings.autoAnalyze || !settings.openaiApiKey || loading || !isValidUser(user)) {
             return;
         }
 
@@ -220,7 +300,7 @@ export const useFinancialInsights = (user) => {
             // Silently fail auto-analysis to not disrupt user experience
             console.error('Auto-analysis failed:', error);
         }
-    }, [settings.autoAnalyze, settings.openaiApiKey, settings.lastAnalysisDate, loading, getInsights]);
+    }, [settings.autoAnalyze, settings.openaiApiKey, settings.lastAnalysisDate, loading, getInsights, user, isValidUser]);
 
     /**
      * Clear insights and cache
@@ -275,11 +355,21 @@ export const useFinancialInsights = (user) => {
 
     // Load settings and cached insights on mount
     useEffect(() => {
-        if (user?.uid) {
+        if (isValidUser(user)) {
             loadSettings();
             loadCachedInsights();
+        } else {
+            // Reset state when user becomes invalid
+            setInsights(null);
+            setError(null);
+            setSettings({
+                openaiApiKey: '',
+                autoAnalyze: false,
+                includeGoals: true,
+                lastAnalysisDate: null
+            });
         }
-    }, [user?.uid, loadSettings, loadCachedInsights]);
+    }, [user, loadSettings, loadCachedInsights, isValidUser]);
 
     return {
         // State

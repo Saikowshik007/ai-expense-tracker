@@ -15,10 +15,22 @@ export const useUserData = (user) => {
     const [error, setError] = useState(null);
 
     /**
+     * Validate user object
+     * @param {object} user - User object to validate
+     * @returns {boolean} True if user is valid
+     */
+    const isValidUser = useCallback((user) => {
+        return user && user.uid && typeof user.uid === 'string' && user.uid.trim() !== '';
+    }, []);
+
+    /**
      * Load all user data from Firebase including API keys
      */
     const loadUserData = useCallback(async () => {
-        if (!user?.uid) return;
+        if (!isValidUser(user)) {
+            console.warn('Invalid user object, skipping data load');
+            return;
+        }
 
         setLoading(true);
         setError(null);
@@ -62,22 +74,23 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Load user data when user changes
      */
     useEffect(() => {
-        if (user?.uid) {
+        if (isValidUser(user)) {
             loadUserData();
         } else {
-            // Reset data when user logs out
+            // Reset data when user logs out or is invalid
             setPaycheckData(FORM_DEFAULTS.PAYCHECK);
             setExpenses([]);
             setBudgets([]);
             setApiKeys([]);
+            setError(null);
         }
-    }, [user?.uid, loadUserData]);
+    }, [user, loadUserData, isValidUser]);
 
     /**
      * Save or update paycheck information
@@ -85,7 +98,7 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const savePaycheckData = useCallback(async (data) => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -117,7 +130,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Save or update an expense
@@ -126,7 +139,7 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const saveExpense = useCallback(async (expenseData, existingId = null) => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -156,7 +169,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid, loadUserData]);
+    }, [user, loadUserData, isValidUser]);
 
     /**
      * Delete an expense
@@ -164,6 +177,10 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const deleteExpense = useCallback(async (expenseId) => {
+        if (!isValidUser(user)) {
+            throw new Error('User not authenticated');
+        }
+
         try {
             setLoading(true);
             setError(null);
@@ -181,7 +198,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user, isValidUser]);
 
     /**
      * Batch delete multiple expenses
@@ -189,6 +206,10 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const batchDeleteExpenses = useCallback(async (expenseIds) => {
+        if (!isValidUser(user)) {
+            throw new Error('User not authenticated');
+        }
+
         try {
             setLoading(true);
             setError(null);
@@ -206,7 +227,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user, isValidUser]);
 
     /**
      * Get expenses within a date range
@@ -215,7 +236,7 @@ export const useUserData = (user) => {
      * @returns {Promise<Array>} Filtered expenses
      */
     const getExpensesByDateRange = useCallback(async (startDate, endDate) => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -239,7 +260,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Search expenses by category
@@ -266,7 +287,7 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const saveBudget = useCallback(async (budgetData, existingId = null) => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -296,7 +317,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Delete a budget
@@ -304,6 +325,10 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const deleteBudget = useCallback(async (budgetId) => {
+        if (!isValidUser(user)) {
+            throw new Error('User not authenticated');
+        }
+
         try {
             setLoading(true);
             setError(null);
@@ -321,7 +346,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user, isValidUser]);
 
     // ============================================
     // API KEY MANAGEMENT METHODS
@@ -334,7 +359,7 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const saveApiKey = useCallback(async (apiKey, label = 'Default') => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -361,7 +386,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Get decrypted OpenAI API key
@@ -369,7 +394,7 @@ export const useUserData = (user) => {
      * @returns {Promise<string|null>} Decrypted API key
      */
     const getApiKey = useCallback(async (label = 'Default') => {
-        if (!user?.uid) {
+        if (!isValidUser(user)) {
             throw new Error('User not authenticated');
         }
 
@@ -380,7 +405,7 @@ export const useUserData = (user) => {
             setError(error.message);
             throw error;
         }
-    }, [user?.uid]);
+    }, [user, isValidUser]);
 
     /**
      * Delete an API key
@@ -388,6 +413,10 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const deleteApiKey = useCallback(async (keyId) => {
+        if (!isValidUser(user)) {
+            throw new Error('User not authenticated');
+        }
+
         try {
             setLoading(true);
             setError(null);
@@ -403,7 +432,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user, isValidUser]);
 
     /**
      * Deactivate an API key (soft delete)
@@ -411,6 +440,10 @@ export const useUserData = (user) => {
      * @returns {Promise<void>}
      */
     const deactivateApiKey = useCallback(async (keyId) => {
+        if (!isValidUser(user)) {
+            throw new Error('User not authenticated');
+        }
+
         try {
             setLoading(true);
             setError(null);
@@ -430,7 +463,7 @@ export const useUserData = (user) => {
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [user, isValidUser]);
 
     /**
      * Check if user has a valid API key
@@ -488,8 +521,12 @@ export const useUserData = (user) => {
      * Refresh all user data
      */
     const refreshData = useCallback(async () => {
+        if (!isValidUser(user)) {
+            console.warn('Cannot refresh data: invalid user');
+            return;
+        }
         await loadUserData();
-    }, [loadUserData]);
+    }, [loadUserData, user, isValidUser]);
 
     return {
         // State
