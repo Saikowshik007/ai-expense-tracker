@@ -290,13 +290,14 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
     /**
      * Calculate summary statistics
      */
-    const totalDebt = creditCards.reduce((sum, card) => sum + (parseFloat(card.currentBalance) || 0), 0);
-    const totalCreditLimit = creditCards.reduce((sum, card) => sum + (parseFloat(card.creditLimit) || 0), 0);
-    const totalMinimumPayments = creditCards.reduce((sum, card) => sum + (parseFloat(card.minimumPayment) || 0), 0);
+    const safeCards = creditCards || [];
+    const totalDebt = safeCards.reduce((sum, card) => sum + (parseFloat(card.currentBalance) || 0), 0);
+    const totalCreditLimit = safeCards.reduce((sum, card) => sum + (parseFloat(card.creditLimit) || 0), 0);
+    const totalMinimumPayments = safeCards.reduce((sum, card) => sum + (parseFloat(card.minimumPayment) || 0), 0);
     const overallUtilization = totalCreditLimit > 0 ? Math.round((totalDebt / totalCreditLimit) * 100) : 0;
 
     // Get cards due soon (within 7 days)
-    const cardsDueSoon = creditCards.filter(card => {
+    const cardsDueSoon = safeCards.filter(card => {
         const daysUntil = getDaysUntilDue(card.dueDate);
         return daysUntil !== null && daysUntil <= 7 && daysUntil >= 0;
     });
@@ -391,7 +392,7 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
             </div>
 
             {/* Credit Cards List */}
-            {creditCards.length === 0 ? (
+            {safeCards.length === 0 ? (
                 <Card className="p-12 text-center">
                     <CreditCard className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                     <h3 className="text-lg font-medium text-gray-900 mb-2">No Credit Cards</h3>
@@ -408,7 +409,7 @@ const CreditCardManager = ({ creditCards, onSave, onDelete, onUpdate }) => {
                 </Card>
             ) : (
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {creditCards.map((card) => {
+                    {safeCards.map((card) => {
                         const utilization = calculateUtilization(card);
                         const isBalanceVisible = showBalances[card.id];
                         const daysUntilDue = getDaysUntilDue(card.dueDate);
