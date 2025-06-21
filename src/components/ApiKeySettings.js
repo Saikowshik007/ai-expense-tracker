@@ -65,8 +65,6 @@ const ApiKeySettings = () => {
             errors.apiKey = 'API key is required';
         } else if (!formData.apiKey.startsWith('sk-')) {
             errors.apiKey = 'OpenAI API keys must start with "sk-"';
-        } else if (formData.apiKey.length !== 51) {
-            errors.apiKey = 'OpenAI API keys should be 51 characters long';
         }
 
         if (!formData.label || formData.label.trim().length < 1) {
