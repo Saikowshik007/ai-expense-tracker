@@ -7,6 +7,7 @@ import AuthForm from './components/AuthForm';
 import Dashboard from './components/Dashboard';
 import PaycheckCalculator from './components/PaycheckCalculator';
 import ExpenseManager from './components/ExpenseManager';
+import CreditCardManager from './components/CreditCardManager';
 import Footer from './components/Footer';
 import { LoadingSpinner } from './components/UI';
 
@@ -24,10 +25,14 @@ const App = () => {
     const {
         paycheckData,
         expenses,
+        creditCards,
         loading: dataLoading,
         savePaycheckData,
         saveExpense,
-        deleteExpense
+        deleteExpense,
+        saveCreditCard,
+        deleteCreditCard,
+        updateCreditCard
     } = useUserData(user);
 
     // Memoize tax calculations to avoid recalculation on every render
@@ -68,7 +73,8 @@ const App = () => {
     const tabs = [
         { id: 'dashboard', label: 'Dashboard' },
         { id: 'paycheck', label: 'Paycheck' },
-        { id: 'expenses', label: 'Expenses' }
+        { id: 'expenses', label: 'Expenses' },
+        { id: 'creditcards', label: 'Credit Cards' }
     ];
 
     return (
@@ -145,12 +151,12 @@ const App = () => {
             {/* Navigation */}
             <nav className="bg-white border-b">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex space-x-8">
+                    <div className="flex space-x-8 overflow-x-auto">
                         {tabs.map((tab) => (
                             <button
                                 key={tab.id}
                                 onClick={() => setActiveTab(tab.id)}
-                                className={`py-4 px-1 border-b-2 font-medium text-sm transition duration-200 ${
+                                className={`py-4 px-1 border-b-2 font-medium text-sm transition duration-200 whitespace-nowrap ${
                                     activeTab === tab.id
                                         ? 'border-indigo-500 text-indigo-600'
                                         : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -175,6 +181,7 @@ const App = () => {
                             <Dashboard
                                 taxCalculations={taxCalculations}
                                 expenses={expenses}
+                                creditCards={creditCards}
                             />
                         )}
 
@@ -190,6 +197,15 @@ const App = () => {
                                 expenses={expenses}
                                 onSave={saveExpense}
                                 onDelete={deleteExpense}
+                            />
+                        )}
+
+                        {activeTab === 'creditcards' && (
+                            <CreditCardManager
+                                creditCards={creditCards}
+                                onSave={saveCreditCard}
+                                onDelete={deleteCreditCard}
+                                onUpdate={updateCreditCard}
                             />
                         )}
                     </>
