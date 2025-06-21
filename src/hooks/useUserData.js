@@ -3,18 +3,19 @@ import { FirebaseService } from '../services/FirebaseService';
 import { FORM_DEFAULTS } from '../constants';
 
 /**
- * Custom Hook for User Data Management - Interface Segregation Principle
- * Handles all user-specific data operations (paycheck, expenses, etc.)
+ * Enhanced Custom Hook for User Data Management with API Key Support
+ * Handles all user-specific data operations including OpenAI API keys
  */
 export const useUserData = (user) => {
     const [paycheckData, setPaycheckData] = useState(FORM_DEFAULTS.PAYCHECK);
     const [expenses, setExpenses] = useState([]);
     const [budgets, setBudgets] = useState([]);
+    const [apiKeys, setApiKeys] = useState([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
 
     /**
-     * Load all user data from Firebase
+     * Load all user data from Firebase including API keys
      */
     const loadUserData = useCallback(async () => {
         if (!user?.uid) return;
@@ -51,6 +52,10 @@ export const useUserData = (user) => {
             );
             setBudgets(budgetsData);
 
+            // Load API keys (masked for display)
+            const apiKeysData = await FirebaseService.getUserApiKeys(user.uid);
+            setApiKeys(apiKeysData);
+
         } catch (error) {
             console.error('Error loading user data:', error);
             setError(error.message);
@@ -70,6 +75,7 @@ export const useUserData = (user) => {
             setPaycheckData(FORM_DEFAULTS.PAYCHECK);
             setExpenses([]);
             setBudgets([]);
+            setApiKeys([]);
         }
     }, [user?.uid, loadUserData]);
 
@@ -317,6 +323,165 @@ export const useUserData = (user) => {
         }
     }, []);
 
+    // ============================================
+    // API KEY MANAGEMENT METHODS
+    // ============================================
+
+    /**
+     * Save or update OpenAI API key
+     * @param {string} apiKey - OpenAI API key
+     * @param {string} label - Label for the API key
+     * @returns {Promise<void>}
+     */
+    const saveApiKey = useCallback(async (apiKey, label = 'Default') => {
+        if (!user?.uid) {
+            throw new Error('User not authenticated');
+        }
+
+        try {
+            setLoading(true);
+            setError(null);
+
+            // Validate API key format
+            if (!FirebaseService.validateOpenAIApiKey(apiKey)) {
+                throw new Error('Invalid OpenAI API key format. Key should start with "sk-" and be 51 characters long.');
+            }
+
+            // Optionally test the API key
+            const isValid = await FirebaseService.testApiKey(apiKey);
+            if (!isValid) {
+                throw new Error('API key appears to be invalid. Please check your key and try again.');
+            }
+
+            await FirebaseService.saveApiKey(user.uid, apiKey, label);
+
+            // Refresh API keys data
+            const apiKeysData = await FirebaseService.getUserApiKeys(user.uid);
+            setApiKeys(apiKeysData);
+
+        } catch (error) {
+            console.error('Error saving API key:', error);
+            setError(error.message);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, [user?.uid]);
+
+    /**
+     * Get decrypted OpenAI API key
+     * @param {string} label - API key label
+     * @returns {Promise<string|null>} Decrypted API key
+     */
+    const getApiKey = useCallback(async (label = 'Default') => {
+        if (!user?.uid) {
+            throw new Error('User not authenticated');
+        }
+
+        try {
+            return await FirebaseService.getApiKey(user.uid, label);
+        } catch (error) {
+            console.error('Error retrieving API key:', error);
+            setError(error.message);
+            throw error;
+        }
+    }, [user?.uid]);
+
+    /**
+     * Delete an API key
+     * @param {string} keyId - API key document ID
+     * @returns {Promise<void>}
+     */
+    const deleteApiKey = useCallback(async (keyId) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            await FirebaseService.deleteApiKey(keyId);
+
+            // Update local state
+            setApiKeys(prevKeys => prevKeys.filter(key => key.id !== keyId));
+        } catch (error) {
+            console.error('Error deleting API key:', error);
+            setError(error.message);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    /**
+     * Deactivate an API key (soft delete)
+     * @param {string} keyId - API key document ID
+     * @returns {Promise<void>}
+     */
+    const deactivateApiKey = useCallback(async (keyId) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            await FirebaseService.deactivateApiKey(keyId);
+
+            // Update local state
+            setApiKeys(prevKeys =>
+                prevKeys.map(key =>
+                    key.id === keyId ? { ...key, isActive: false } : key
+                )
+            );
+        } catch (error) {
+            console.error('Error deactivating API key:', error);
+            setError(error.message);
+            throw error;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    /**
+     * Check if user has a valid API key
+     * @returns {boolean} True if user has an active API key
+     */
+    const hasApiKey = useCallback(() => {
+        return apiKeys.some(key => key.isActive);
+    }, [apiKeys]);
+
+    /**
+     * Get the default API key info (without decrypting)
+     * @returns {object|null} API key info or null
+     */
+    const getDefaultApiKeyInfo = useCallback(() => {
+        return apiKeys.find(key => key.label === 'Default' && key.isActive) || null;
+    }, [apiKeys]);
+
+    /**
+     * Validate and test an API key without saving
+     * @param {string} apiKey - API key to test
+     * @returns {Promise<boolean>} True if valid
+     */
+    const testApiKey = useCallback(async (apiKey) => {
+        try {
+            setLoading(true);
+            setError(null);
+
+            if (!FirebaseService.validateOpenAIApiKey(apiKey)) {
+                throw new Error('Invalid API key format');
+            }
+
+            const isValid = await FirebaseService.testApiKey(apiKey);
+            if (!isValid) {
+                throw new Error('API key is not valid');
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Error testing API key:', error);
+            setError(error.message);
+            return false;
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
     /**
      * Clear any existing errors
      */
@@ -336,6 +501,7 @@ export const useUserData = (user) => {
         paycheckData,
         expenses,
         budgets,
+        apiKeys,
         loading,
         error,
 
@@ -353,6 +519,15 @@ export const useUserData = (user) => {
         // Budget actions
         saveBudget,
         deleteBudget,
+
+        // API Key actions
+        saveApiKey,
+        getApiKey,
+        deleteApiKey,
+        deactivateApiKey,
+        testApiKey,
+        hasApiKey,
+        getDefaultApiKeyInfo,
 
         // Utility actions
         clearError,

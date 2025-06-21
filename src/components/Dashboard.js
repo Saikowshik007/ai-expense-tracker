@@ -1,14 +1,42 @@
-import React, { useMemo } from 'react';
-import { DollarSign, TrendingUp, User, PieChart, AlertCircle, TrendingDown, CreditCard, Calendar } from 'lucide-react';
+import React, { useMemo, useEffect } from 'react';
+import {
+    DollarSign,
+    TrendingUp,
+    User,
+    PieChart,
+    AlertCircle,
+    TrendingDown,
+    CreditCard,
+    Calendar,
+    Brain,
+    Target,
+    CheckCircle
+} from 'lucide-react';
 import { ExpenseCalculatorService } from '../services/ExpenseCalculatorService';
 import { CreditCardService } from '../services/CreditCardService';
-import { StatCard, Card, Badge, Alert } from './UI';
+import { useFinancialInsights } from '../hooks/useFinancialInsights';
+import { StatCard, Card, Badge, Alert, Button } from './UI';
+import FinancialInsights from './FinancialInsights';
 
 /**
- * Enhanced Dashboard Component with Credit Card Integration
- * Displays financial overview including credit card debt and payments
+ * Enhanced Dashboard Component with AI Integration
+ * Displays financial overview with AI-powered insights and recommendations
  */
-const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
+const Dashboard = ({ taxCalculations, expenses, creditCards = [], user }) => {
+    // Use the financial insights hook
+    const {
+        insights,
+        loading: insightsLoading,
+        error: insightsError,
+        settings,
+        getInsights,
+        saveSettings,
+        autoAnalyze,
+        insightsSummary,
+        hasInsights,
+        isApiConfigured
+    } = useFinancialInsights(user);
+
     // Memoized calculations to avoid recalculation on every render
     const financialMetrics = useMemo(() => {
         if (!taxCalculations || !expenses) {
@@ -69,6 +97,18 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
             creditCardSummary
         };
     }, [taxCalculations, expenses, creditCards]);
+
+    // Auto-analyze when financial data changes (if enabled)
+    useEffect(() => {
+        if (settings.autoAnalyze && taxCalculations && (expenses.length > 0 || creditCards.length > 0)) {
+            autoAnalyze({
+                paycheckData: { state: 'Unknown' }, // You might want to pass actual paycheck data
+                expenses,
+                creditCards,
+                taxCalculations
+            });
+        }
+    }, [taxCalculations, expenses, creditCards, settings.autoAnalyze, autoAnalyze]);
 
     /**
      * Get status color based on savings rate
@@ -187,6 +227,36 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
 
     return (
         <div className="space-y-6">
+            {/* AI Insights Summary Banner */}
+            {insightsSummary && (
+                <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg p-6 text-white">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                            <Brain className="w-8 h-8" />
+                            <div>
+                                <h3 className="text-lg font-semibold">AI Financial Health Score</h3>
+                                <p className="text-indigo-100">
+                                    {insightsSummary.healthScore ? `${insightsSummary.healthScore}/10` : 'Analysis Available'}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="text-right">
+                            {insightsSummary.topPriority && (
+                                <div className="mb-2">
+                                    <p className="text-sm text-indigo-100">Top Priority:</p>
+                                    <p className="text-sm font-medium">{insightsSummary.topPriority}</p>
+                                </div>
+                            )}
+                            {insightsSummary.isStale && (
+                                <Badge variant="warning" className="bg-yellow-500 text-yellow-900">
+                                    Analysis outdated
+                                </Badge>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Key Metrics */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <StatCard
@@ -221,6 +291,16 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                     color={getUtilizationColor(financialMetrics.creditCardSummary.averageUtilization)}
                 />
             </div>
+
+            {/* Priority Alerts from AI */}
+            {insightsSummary?.topPriority && (
+                <Alert type="info" title="AI Recommendation">
+                    <div className="flex items-start space-x-2">
+                        <Target className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                        <span>{insightsSummary.topPriority}</span>
+                    </div>
+                </Alert>
+            )}
 
             {/* Credit Card Alerts */}
             {financialMetrics.creditCardSummary.overdueCards.length > 0 && (
@@ -335,16 +415,6 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                             </div>
 
                             <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Monthly Payments</span>
-                                <span className="font-medium">{formatCurrency(financialMetrics.creditCardSummary.monthlyPayments)}</span>
-                            </div>
-
-                            <div className="flex justify-between items-center">
-                                <span className="text-gray-600">Monthly Interest</span>
-                                <span className="font-medium text-red-600">{formatCurrency(financialMetrics.creditCardSummary.monthlyInterest)}</span>
-                            </div>
-
-                            <div className="flex justify-between items-center">
                                 <span className="text-gray-600">Overall Utilization</span>
                                 <div className="flex items-center space-x-2">
                                     <span className="font-medium">{financialMetrics.creditCardSummary.averageUtilization}%</span>
@@ -448,6 +518,16 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                 </Card>
             </div>
 
+            {/* Financial Insights Component */}
+            <FinancialInsights
+                paycheckData={{ state: 'Unknown' }} // You might want to pass actual paycheck data
+                expenses={expenses}
+                creditCards={creditCards}
+                taxCalculations={taxCalculations}
+                userSettings={settings}
+                onSaveSettings={saveSettings}
+            />
+
             {/* Credit Card Recommendations */}
             {financialMetrics.creditCardSummary.recommendations && financialMetrics.creditCardSummary.recommendations.length > 0 && (
                 <Card title="Credit Card Recommendations">
@@ -483,7 +563,7 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                 <div className="text-center">
                     <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-indigo-100 mb-4">
             <span className="text-2xl font-bold text-indigo-600">
-              {Math.round(
+              {insightsSummary?.healthScore || Math.round(
                   (financialMetrics.savingsInfo.savingsRate / 20) * 30 + // 30% weight for savings rate
                   (financialMetrics.remainingBudget > 0 ? 25 : 0) + // 25% weight for positive budget
                   (Object.keys(financialMetrics.expensesByCategory).length > 0 ? 15 : 0) + // 15% weight for expense tracking
@@ -494,7 +574,7 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                     </div>
                     <h3 className="text-lg font-medium text-gray-900 mb-2">
                         {(() => {
-                            const score = Math.round(
+                            const score = insightsSummary?.healthScore || Math.round(
                                 (financialMetrics.savingsInfo.savingsRate / 20) * 30 +
                                 (financialMetrics.remainingBudget > 0 ? 25 : 0) +
                                 (Object.keys(financialMetrics.expensesByCategory).length > 0 ? 15 : 0) +
@@ -507,9 +587,27 @@ const Dashboard = ({ taxCalculations, expenses, creditCards = [] }) => {
                             return 'Needs Improvement';
                         })()}
                     </h3>
-                    <p className="text-gray-600 text-sm">
+                    <p className="text-gray-600 text-sm mb-4">
                         Based on your savings rate, budget management, credit utilization, and expense tracking habits.
                     </p>
+
+                    {/* AI Enhancement Notice */}
+                    {!hasInsights && isApiConfigured && (
+                        <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                            <p className="text-sm text-blue-800">
+                                <Brain className="w-4 h-4 inline mr-1" />
+                                Get AI-powered insights to improve your score
+                            </p>
+                        </div>
+                    )}
+
+                    {!isApiConfigured && (
+                        <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+                            <p className="text-sm text-gray-600">
+                                Configure OpenAI API to get personalized AI insights
+                            </p>
+                        </div>
+                    )}
                 </div>
             </Card>
         </div>

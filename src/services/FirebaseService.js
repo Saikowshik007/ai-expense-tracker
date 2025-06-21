@@ -15,8 +15,8 @@ import {
 import { db } from '../firebase';
 
 /**
- * Firebase Service - Single Responsibility Principle
- * Handles all Firebase Firestore operations
+ * Enhanced Firebase Service with API Key Management
+ * Handles all Firebase Firestore operations including secure API key storage
  */
 export class FirebaseService {
     /**
@@ -256,6 +256,235 @@ export class FirebaseService {
         } catch (error) {
             console.error(`Error searching documents in ${collectionName}:`, error);
             throw new Error(`Failed to search documents: ${error.message}`);
+        }
+    }
+
+    // ============================================
+    // API KEY MANAGEMENT METHODS
+    // ============================================
+
+    /**
+     * Simple encryption for API keys (client-side)
+     * Note: This is basic obfuscation, not true encryption
+     * For production, consider server-side encryption
+     * @param {string} text - Text to encrypt
+     * @param {string} key - Encryption key (user ID)
+     * @returns {string} Encrypted text
+     */
+    static simpleEncrypt(text, key) {
+        let result = '';
+        for (let i = 0; i < text.length; i++) {
+            const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+            result += String.fromCharCode(charCode);
+        }
+        return btoa(result); // Base64 encode
+    }
+
+    /**
+     * Simple decryption for API keys (client-side)
+     * @param {string} encryptedText - Encrypted text
+     * @param {string} key - Decryption key (user ID)
+     * @returns {string} Decrypted text
+     */
+    static simpleDecrypt(encryptedText, key) {
+        try {
+            const decoded = atob(encryptedText); // Base64 decode
+            let result = '';
+            for (let i = 0; i < decoded.length; i++) {
+                const charCode = decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+                result += String.fromCharCode(charCode);
+            }
+            return result;
+        } catch (error) {
+            console.error('Error decrypting API key:', error);
+            return '';
+        }
+    }
+
+    /**
+     * Save or update user's OpenAI API key
+     * @param {string} userId - User ID
+     * @param {string} apiKey - OpenAI API key
+     * @param {string|null} label - Optional label for the API key
+     * @returns {Promise<string>} Document ID
+     */
+    static async saveApiKey(userId, apiKey, label = 'Default') {
+        try {
+            if (!apiKey || !apiKey.startsWith('sk-')) {
+                throw new Error('Invalid OpenAI API key format');
+            }
+
+            // Check if user already has an API key
+            const existingKeys = await this.getUserDocuments('apiKeys', userId);
+            const existingKey = existingKeys.find(key => key.label === label);
+
+            // Encrypt the API key using user ID as the key
+            const encryptedKey = this.simpleEncrypt(apiKey, userId);
+
+            const keyData = {
+                encryptedKey,
+                label,
+                keyType: 'openai',
+                isActive: true,
+                lastUsed: null,
+                usageCount: 0
+            };
+
+            const docId = await this.saveOrUpdateDocument(
+                'apiKeys',
+                userId,
+                keyData,
+                existingKey?.id || null
+            );
+
+            return docId;
+        } catch (error) {
+            console.error('Error saving API key:', error);
+            throw new Error(`Failed to save API key: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get user's OpenAI API key
+     * @param {string} userId - User ID
+     * @param {string} label - API key label (default: 'Default')
+     * @returns {Promise<string|null>} Decrypted API key or null if not found
+     */
+    static async getApiKey(userId, label = 'Default') {
+        try {
+            const apiKeys = await this.getUserDocuments('apiKeys', userId);
+            const keyDoc = apiKeys.find(key => key.label === label && key.isActive);
+
+            if (!keyDoc) {
+                return null;
+            }
+
+            // Decrypt the API key
+            const decryptedKey = this.simpleDecrypt(keyDoc.encryptedKey, userId);
+
+            // Update last used timestamp
+            await this.updateApiKeyUsage(keyDoc.id);
+
+            return decryptedKey;
+        } catch (error) {
+            console.error('Error retrieving API key:', error);
+            throw new Error(`Failed to retrieve API key: ${error.message}`);
+        }
+    }
+
+    /**
+     * Get all API keys for a user (without decrypting)
+     * @param {string} userId - User ID
+     * @returns {Promise<Array>} Array of API key documents (encrypted)
+     */
+    static async getUserApiKeys(userId) {
+        try {
+            const apiKeys = await this.getUserDocuments('apiKeys', userId, 'createdAt', 'desc');
+
+            // Return keys without the encrypted data for security
+            return apiKeys.map(key => ({
+                id: key.id,
+                label: key.label,
+                keyType: key.keyType,
+                isActive: key.isActive,
+                lastUsed: key.lastUsed,
+                usageCount: key.usageCount,
+                createdAt: key.createdAt,
+                updatedAt: key.updatedAt,
+                // Mask the key for display
+                maskedKey: key.encryptedKey ? '••••••••••••••••' + (key.label || 'sk-') : ''
+            }));
+        } catch (error) {
+            console.error('Error fetching user API keys:', error);
+            throw new Error(`Failed to fetch API keys: ${error.message}`);
+        }
+    }
+
+    /**
+     * Update API key usage statistics
+     * @param {string} keyDocId - API key document ID
+     * @returns {Promise<void>}
+     */
+    static async updateApiKeyUsage(keyDocId) {
+        try {
+            const keyDoc = await this.getDocumentById('apiKeys', keyDocId);
+            if (keyDoc) {
+                await updateDoc(doc(db, 'apiKeys', keyDocId), {
+                    lastUsed: new Date(),
+                    usageCount: (keyDoc.usageCount || 0) + 1,
+                    updatedAt: new Date()
+                });
+            }
+        } catch (error) {
+            console.error('Error updating API key usage:', error);
+            // Don't throw error for usage tracking failures
+        }
+    }
+
+    /**
+     * Delete an API key
+     * @param {string} keyDocId - API key document ID
+     * @returns {Promise<void>}
+     */
+    static async deleteApiKey(keyDocId) {
+        try {
+            await this.deleteDocument('apiKeys', keyDocId);
+        } catch (error) {
+            console.error('Error deleting API key:', error);
+            throw new Error(`Failed to delete API key: ${error.message}`);
+        }
+    }
+
+    /**
+     * Deactivate an API key (soft delete)
+     * @param {string} keyDocId - API key document ID
+     * @returns {Promise<void>}
+     */
+    static async deactivateApiKey(keyDocId) {
+        try {
+            await updateDoc(doc(db, 'apiKeys', keyDocId), {
+                isActive: false,
+                updatedAt: new Date()
+            });
+        } catch (error) {
+            console.error('Error deactivating API key:', error);
+            throw new Error(`Failed to deactivate API key: ${error.message}`);
+        }
+    }
+
+    /**
+     * Validate OpenAI API key format
+     * @param {string} apiKey - API key to validate
+     * @returns {boolean} True if valid format
+     */
+    static validateOpenAIApiKey(apiKey) {
+        if (!apiKey || typeof apiKey !== 'string') {
+            return false;
+        }
+
+        // OpenAI API keys start with 'sk-' and are typically 51 characters long
+        const openAiKeyPattern = /^sk-[a-zA-Z0-9]{48}$/;
+        return openAiKeyPattern.test(apiKey);
+    }
+
+    /**
+     * Test API key validity by making a simple API call
+     * @param {string} apiKey - API key to test
+     * @returns {Promise<boolean>} True if key is valid
+     */
+    static async testApiKey(apiKey) {
+        try {
+            const response = await fetch('https://api.openai.com/v1/models', {
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            return response.ok;
+        } catch (error) {
+            console.error('Error testing API key:', error);
+            return false;
         }
     }
 }
